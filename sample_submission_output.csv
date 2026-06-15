@@ -1,0 +1,23 @@
+candidate_id,rank,score,reasoning
+CAND_0000046,1,0.4698,"Solid match (Overall: 47.0%). Highly favorable behavioral indicators (83.3%). Evidence: 7.8 yrs experience, 30 day notice, highly active on GitHub (score: 20.9)."
+CAND_0000033,2,0.4607,"Solid match (Overall: 46.1%). Highly favorable behavioral indicators (78.0%). Evidence: 8.6 yrs experience, 30 day notice, highly active on GitHub (score: 38.3)."
+CAND_0000029,3,0.4222,"Solid match (Overall: 42.2%). Highly favorable behavioral indicators (66.7%). Evidence: 7.2 yrs experience, highly active on GitHub (score: 42.5)."
+CAND_0000016,4,0.4214,"Solid match (Overall: 42.1%). Highly favorable behavioral indicators (66.7%). Evidence: 5.3 yrs experience, highly active on GitHub (score: 42.9)."
+CAND_0000030,5,0.4193,"Solid match (Overall: 41.9%). Highly favorable behavioral indicators (66.7%). Evidence: 10.0 yrs experience, highly active on GitHub (score: 21.7)."
+CAND_0000024,6,0.4168,"Solid match (Overall: 41.7%). Highly favorable behavioral indicators (66.7%). Evidence: 7.5 yrs experience, highly active on GitHub (score: 46.3)."
+CAND_0000031,7,0.4147,"Solid match (Overall: 41.5%). Highly favorable behavioral indicators (66.7%). Evidence: 6.0 yrs experience, highly active on GitHub (score: 32.6)."
+CAND_0000023,8,0.3832,"Fair match (Overall: 38.3%). Highly favorable behavioral indicators (56.7%). Evidence: 3.7 yrs experience, 30 day notice, highly active on GitHub (score: 48.5)."
+CAND_0000021,9,0.3680,Fair match (Overall: 36.8%). Standout semantic alignment with JD (63.0%). Evidence: 14.5 yrs experience.
+CAND_0000001,10,0.3670,"Fair match (Overall: 36.7%). Standout semantic alignment with JD (51.0%). Evidence: 6.9 yrs experience, highly active on GitHub (score: 9.2)."
+CAND_0000037,11,0.3635,"Fair match (Overall: 36.3%). Standout semantic alignment with JD (55.9%). Evidence: 14.3 yrs experience, 30 day notice."
+CAND_0000026,12,0.3599,"Fair match (Overall: 36.0%). Standout semantic alignment with JD (55.0%). Evidence: 6.8 yrs experience, 30 day notice."
+CAND_0000042,13,0.3536,"Fair match (Overall: 35.4%). Standout semantic alignment with JD (53.4%). Evidence: 5.0 yrs experience, 30 day notice."
+CAND_0000020,14,0.3299,"Fair match (Overall: 33.0%). Standout semantic alignment with JD (53.5%). Evidence: 6.3 yrs experience, 30 day notice."
+CAND_0000039,15,0.3084,"Fair match (Overall: 30.8%). Standout semantic alignment with JD (56.1%). Evidence: 3.9 yrs experience, 30 day notice."
+CAND_0000019,16,0.3061,Fair match (Overall: 30.6%). Standout semantic alignment with JD (54.0%). Evidence: 6.5 yrs experience.
+CAND_0000045,17,0.3001,Fair match (Overall: 30.0%). Standout semantic alignment with JD (59.0%). Evidence: 12.2 yrs experience.
+CAND_0000036,18,0.2891,Fair match (Overall: 28.9%). Standout semantic alignment with JD (49.8%). Evidence: 11.3 yrs experience.
+CAND_0000005,19,0.2787,"Fair match (Overall: 27.9%). Standout semantic alignment with JD (53.7%). Evidence: 11.0 yrs experience, 30 day notice."
+CAND_0000007,20,0.2620,"Fair match (Overall: 26.2%). Standout semantic alignment with JD (54.5%). Evidence: 5.5 yrs experience, 30 day notice."
+CAND_0000035,21,0.2264,Fair match (Overall: 22.6%). Standout semantic alignment with JD (55.6%). Evidence: 4.3 yrs experience.
+CAND_0000002,22,0.2235,Fair match (Overall: 22.3%). Standout semantic alignment with JD (54.9%). Evidence: 12.5 yrs experience.
