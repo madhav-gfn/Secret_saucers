@@ -6,7 +6,7 @@ def _run_llm_extraction(jd_text, result_dict):
     try:
         from transformers import pipeline
         
-        # Use an incredibly tiny, fast model that is highly instruction-tuned
+        # Use a smart, instruction-tuned model
         model_id = "Qwen/Qwen1.5-0.5B-Chat"
         
         pipe = pipeline(
