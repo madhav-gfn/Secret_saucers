@@ -7,7 +7,7 @@ TECHNICAL_CATEGORIES = {
     "python", "pytorch", "tensorflow", "keras", "scikit", "sklearn", "numpy", "pandas",
     "deep learning", "machine learning", "neural", "nlp", "natural language",
     "llm", "gpt", "bert", "transformer", "attention", "fine-tuning", "lora", "qlora", "peft",
-    "rag", "langchain", "llamaindex", "hugging face", "embeddings", "sentence-transformers",
+    "rag", "llamaindex", "hugging face", "embeddings", "sentence-transformers",
     # Vector DBs & Search
     "faiss", "pinecone", "weaviate", "qdrant", "milvus", "opensearch", "elasticsearch",
     "vector search", "semantic search", "information retrieval", "search backend",

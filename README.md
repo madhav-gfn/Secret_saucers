@@ -56,7 +56,12 @@ To help the team understand the engineering evolution of this pipeline, here are
 - **Why it failed**: The JD authors explicitly warned that this was a trap. We found candidates whose current title was "Marketing Manager" but who had stuffed their skills array with "RAG", "Pinecone", and "Python".
 - **What we did instead**: We built a strict parser that scans `career_history[].title` against a technical keyword list (`"engineer", "ml", "ai", "data", "backend"`). We calculate actual **"Relevant Months"** of experience. If their current title isn't technical, or their calculated relevant years is less than the minimum, they are dropped in Stage 1 regardless of their skills array.
 
-### 4. Noise Skills in the Explanation String
+### 4. The "Negative Mention" Trap (JD Lines 43/45)
+- **What we tried**: Our Stage 2 haystack extraction originally matched candidate skills against *any* word in the JD.
+- **Why it failed**: The JD contains explicit negative mentions: *"If your GitHub is full of **LangChain** tutorials... it's not what we need"*, and *"People whose primary expertise is **computer vision**, **speech**, or **robotics**... you'd be re-learning fundamentals."* Because our system extracted these words dynamically, it actively **rewarded** candidates for having LangChain, Speech, or CV skills!
+- **What we did instead**: We hardcoded `{"langchain", "vision", "speech", "robotics"}` into our regex `STOPWORDS` list. We also added a deep scan in Stage 1: if a candidate has CV/Speech/Robotics expertise but zero NLP/IR/Search exposure, they are instantly dropped.
+
+### 5. Noise Skills in the Explanation String
 - **What we tried**: In Stage 4, we simply printed the top 3 intersecting skills that matched between the candidate and the JD.
 - **Why it failed**: Because the JD is conversational, it contains standard words like "marketing", "content", and "systems". If a candidate had "Content Writing" as a skill, it matched the JD and was prominently displayed in our reasoning output as a "key technical competency." This made the system look unintelligent.
 - **What we did instead**: We decoupled the scoring engine from the display engine. The scoring engine continues to use dynamic JD matching, but the display engine uses a strict `TECHNICAL_CATEGORIES` whitelist. Now, the final CSV only surfaces genuinely technical ML/AI/Backend skills in the reasoning string, ensuring maximum credibility.

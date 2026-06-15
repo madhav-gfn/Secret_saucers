@@ -126,7 +126,35 @@ def passes_baseline_filters(cand):
     if "offer_acceptance_rate" in signals and signals["offer_acceptance_rate"] < 0.20:
         return False
     
-    # 7. Tag location data for Stage 3 scoring (JD Line 48/60)
+    # 7. CV/Speech/Robotics without NLP/IR Trap (JD Line 45)
+    # Check if they are heavily CV/Speech/Robotics focused
+    has_cv_speech = False
+    has_nlp_ir = False
+    cv_keywords = {"vision", "cv", "speech", "robotics", "image"}
+    nlp_keywords = {"nlp", "ir", "search", "retrieval", "ranking", "recommendation", "language", "llm", "text"}
+    
+    for job in career_history:
+        title = job.get("title", "").lower()
+        desc = job.get("description", "").lower()
+        combined = title + " " + desc
+        
+        if any(kw in combined for kw in cv_keywords):
+            has_cv_speech = True
+        if any(kw in combined for kw in nlp_keywords):
+            has_nlp_ir = True
+            
+    # Also check explicitly stated skills
+    for s in cand.get("skills", []):
+        name = s.get("name", "").lower()
+        if any(kw in name for kw in cv_keywords):
+            has_cv_speech = True
+        if any(kw in name for kw in nlp_keywords):
+            has_nlp_ir = True
+            
+    if has_cv_speech and not has_nlp_ir:
+        return False
+        
+    # 8. Tag location data for Stage 3 scoring (JD Line 48/60)
     location = profile.get("location", "").lower()
     country = profile.get("country", "").lower()
     relocate = signals.get("willing_to_relocate", False)

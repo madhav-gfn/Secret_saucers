@@ -4,10 +4,12 @@ import numpy as np
 from sentence_transformers import SentenceTransformer
 
 # Common English stopwords that could appear as fake "skills"
+# ALSO includes Negative Mentions explicitly rejected by the JD (Line 43/45)
 STOPWORDS = {"the", "and", "for", "are", "but", "not", "you", "all", "can", "her",
              "was", "one", "our", "out", "has", "had", "how", "its", "may", "new",
              "now", "old", "see", "way", "who", "did", "get", "let", "say", "she",
-             "too", "use", "set", "map", "run", "age", "art", "log", "ion", "arm"}
+             "too", "use", "set", "map", "run", "age", "art", "log", "ion", "arm",
+             "langchain", "vision", "speech", "robotics"}
 
 class EnsembleMatcher:
     def __init__(self):
