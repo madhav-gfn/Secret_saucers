@@ -3,6 +3,7 @@ __pycache__/
 .env
 .venv/
 venv/
+*.jsonl
 candidates.jsonl
 sample_candidates.json
 100k_sample_data.jsonl
