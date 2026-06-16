@@ -1,5 +1,12 @@
 import sys
 import time
+from pathlib import Path
+
+# Ensure the project root is on sys.path so `from src.xxx` works
+# regardless of how this script is invoked (any machine, any cwd).
+_PROJECT_ROOT = str(Path(__file__).resolve().parent.parent)
+if _PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, _PROJECT_ROOT)
 from src.config import SAMPLE_CANDIDATES_PATH, FULL_CANDIDATES_PATH, JD_PATH, BASE_DIR
 from src.stage1_filter import stream_and_filter_candidates
 from src.stage2_ensemble import EnsembleMatcher

@@ -30,6 +30,15 @@ def _gather_text(cand):
     return " ".join(parts).lower()
 
 
+from functools import lru_cache
+
+
+@lru_cache(maxsize=512)
+def _word_pattern(kw):
+    """Compile and cache a word-boundary regex for a keyword. Called once per unique keyword."""
+    return re.compile(r'\b' + re.escape(kw) + r'\b')
+
+
 def _keyword_matches(text, keywords):
     """Find non-overlapping keyword matches using word-safe comparisons."""
     matches = []
@@ -38,7 +47,7 @@ def _keyword_matches(text, keywords):
             if kw in text:
                 matches.append(kw)
         else:
-            if re.search(r'\b' + re.escape(kw) + r'\b', text):
+            if _word_pattern(kw).search(text):
                 matches.append(kw)
 
     deduplicated = []
