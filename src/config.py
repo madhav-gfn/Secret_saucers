@@ -1,7 +1,11 @@
 from pathlib import Path
-
-# Paths
 BASE_DIR = Path(r"c:\Users\devgu\Downloads\[PUB] India_runs_data_and_ai_challenge")
+# Project root (repo root)
+# Using a repo-relative path so the pipeline uses the dataset included in this workspace
+# madhav's base directory
+# BASE_DIR = Path(__file__).resolve().parents[1]
+
+# Data directory inside the repo
 DATA_DIR = BASE_DIR / "[PUB] India_runs_data_and_ai_challenge" / "India_runs_data_and_ai_challenge"
 SAMPLE_CANDIDATES_PATH = DATA_DIR / "sample_candidates.json"
 FULL_CANDIDATES_PATH = DATA_DIR / "candidates.jsonl"
