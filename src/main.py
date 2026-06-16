@@ -5,19 +5,12 @@ from src.stage1_filter import stream_and_filter_candidates
 from src.stage2_ensemble import EnsembleMatcher
 from src.stage3_scorecard import rank_candidates
 from src.stage4_explanation import generate_submission_csv
-from src.jd_analyzer import extract_dynamic_skills
 
 def run_pipeline(use_sample=False):
     data_path = SAMPLE_CANDIDATES_PATH if use_sample else FULL_CANDIDATES_PATH
     output_path = BASE_DIR / "submission.csv"
     
     start_time = time.time()
-    
-    # 0. DYNAMIC LLM JD PARSING
-    # Attempt to extract exact requirements vs rejected skills
-    with open(JD_PATH, "r", encoding="utf-8") as f:
-        jd_text = f.read()
-    dynamic_req, dynamic_rej = extract_dynamic_skills(jd_text)
     
     print(f"--- Starting Synthesized Pipeline with data: {data_path.name} ---")
     
@@ -29,7 +22,7 @@ def run_pipeline(use_sample=False):
     # 2. STAGE 2: Deep Semantic & Hard Skill Matching
     print("\n--- STAGE 2: Feature Extraction & Ensemble Matching ---")
     matcher = EnsembleMatcher()
-    matcher.load_jd(JD_PATH, dynamic_req, dynamic_rej)
+    matcher.load_jd(JD_PATH)
     s2_candidates = matcher.score_candidates(s1_candidates)
     
     # Stage 3

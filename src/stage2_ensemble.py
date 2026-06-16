@@ -18,7 +18,7 @@ class EnsembleMatcher:
         self.jd_text = ""
         self.jd_words = set()  # Word-boundary tokenized set for exact matching
         
-    def load_jd(self, jd_path, dynamic_required=None, dynamic_rejected=None):
+    def load_jd(self, jd_path):
         with open(jd_path, "r", encoding="utf-8") as f:
             self.jd_text = f.read()
             
@@ -26,31 +26,16 @@ class EnsembleMatcher:
         raw_tokens = re.findall(r'[a-z0-9]+(?:-[a-z0-9]+)*', self.jd_text.lower())
         self.jd_words = set()
         
-        # If the dynamic LLM succeeded, we ONLY use the words it extracted as positive signals
-        if dynamic_required:
-            for skill in dynamic_required:
-                for word in re.findall(r'[a-z0-9]+(?:-[a-z0-9]+)*', skill):
-                    if len(word) >= 3:
-                        self.jd_words.add(word)
-        else:
-            # Fallback: tokenizing the whole document
-            for token in raw_tokens:
-                self.jd_words.add(token)
-                # Split hyphenated compounds: "data-infra" -> "data", "infra"
-                if '-' in token:
-                    for part in token.split('-'):
-                        if len(part) >= 3:
-                            self.jd_words.add(part)
+        for token in raw_tokens:
+            self.jd_words.add(token)
+            # Split hyphenated compounds: "data-infra" -> "data", "infra"
+            if '-' in token:
+                for part in token.split('-'):
+                    if len(part) >= 3:
+                        self.jd_words.add(part)
         
         # Apply Stopwords / Blocklist
         self.jd_words -= STOPWORDS
-        
-        # If the LLM successfully extracted negative skills, remove them too!
-        if dynamic_rejected:
-            for skill in dynamic_rejected:
-                for word in re.findall(r'[a-z0-9]+(?:-[a-z0-9]+)*', skill):
-                    if word in self.jd_words:
-                        self.jd_words.remove(word)
         
         self.jd_vector = self.model.encode([self.jd_text], normalize_embeddings=True)
         
