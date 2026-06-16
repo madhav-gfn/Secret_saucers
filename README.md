@@ -59,7 +59,10 @@ To help the team understand the engineering evolution of this pipeline, here are
 ### 4. The "Negative Mention" Trap (JD Lines 43/45)
 - **What we tried**: Our Stage 2 haystack extraction originally matched candidate skills against *any* word in the JD.
 - **Why it failed**: The JD contains explicit negative mentions: *"If your GitHub is full of **LangChain** tutorials... it's not what we need"*, and *"People whose primary expertise is **computer vision**, **speech**, or **robotics**... you'd be re-learning fundamentals."* Because our system extracted these words dynamically, it actively **rewarded** candidates for having LangChain, Speech, or CV skills!
-- **What we did instead**: We hardcoded `{"langchain", "vision", "speech", "robotics"}` into our regex `STOPWORDS` list. We also added a deep scan in Stage 1: if a candidate has CV/Speech/Robotics expertise but zero NLP/IR/Search exposure, they are instantly dropped.
+- **What we did instead**: We built a **Dynamic LLM Safety Net** (`src/jd_analyzer.py`).
+  - At startup, we attempt to initialize a tiny, instruction-tuned LLM (`Qwen/Qwen1.5-0.5B-Chat`) to dynamically parse the JD into explicit "REQUIRED" and "REJECTED" lists. 
+  - **The CPU Bottleneck**: During testing, we found that running even a 135M or 500M parameter model on a standard CPU takes **>10 minutes** to compute attention over the 1,000-token JD context. This would instantly fail the hackathon's strict 300-second execution limit.
+  - **The Solution**: We wrapped the LLM extraction in a strict **45-second timeout thread**. If the evaluator runs the script on a machine with a GPU, the LLM finishes instantly and provides dynamic parsing. If it's tested on a standard CPU, the thread is cleanly killed at 45 seconds, and the system seamlessly falls back to our deterministic regex extraction (with hardcoded negative words like `"langchain"`, `"vision"`, `"speech"`). This guarantees a fast pipeline execution time (~85 seconds total) with zero risk of disqualification.
 
 ### 5. Noise Skills in the Explanation String
 - **What we tried**: In Stage 4, we simply printed the top 3 intersecting skills that matched between the candidate and the JD.
