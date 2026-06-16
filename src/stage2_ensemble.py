@@ -2,6 +2,7 @@ import faiss
 import re
 import numpy as np
 from sentence_transformers import SentenceTransformer
+from src.features import compute_all_features
 
 # Common English stopwords that could appear as fake "skills"
 # ALSO includes Negative Mentions explicitly rejected by the JD (Line 43/45)
@@ -88,8 +89,8 @@ class EnsembleMatcher:
         
     def score_candidates(self, candidates):
         """
-        Compute Semantic and Jaccard scores. TF-IDF is implicitly represented 
-        by Jaccard for the exact keyword matches in our lightweight ensemble.
+        Compute Semantic and Jaccard scores, then compute all domain-specific
+        features from features.py in the same pass.
         """
         if not candidates:
             return []
@@ -105,7 +106,8 @@ class EnsembleMatcher:
             
             texts.append(f"{profile.get('summary', '')} {career_text} {' '.join(skill_names)}")
             
-        cand_vectors = self.model.encode(texts, normalize_embeddings=True)
+        print(f"  Encoding {len(texts)} candidates...")
+        cand_vectors = self.model.encode(texts, normalize_embeddings=True, batch_size=256, show_progress_bar=False)
         
         # Inner product of normalized vectors = Cosine Similarity
         index = faiss.IndexFlatIP(cand_vectors.shape[1])
@@ -133,6 +135,10 @@ class EnsembleMatcher:
             cand["semantic_score"] = semantic
             cand["hard_skill_score"] = weighted_score
             cand["matched_skills"] = matched_names
+
+            # ── Compute all domain-specific features ──
+            compute_all_features(cand)
+            
             scored_candidates.append(cand)
             
         return scored_candidates

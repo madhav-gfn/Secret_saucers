@@ -30,89 +30,166 @@ def is_technical_skill(skill_name):
             return True
     return False
 
-def generate_reasoning(cand):
+
+def generate_reasoning(cand, rank):
     """
-    Generates a transparent, evidence-backed 1-2 sentence explanation 
-    using the HRClaw Scorecard, bypassing the need for a slow LLM.
+    Generates a recruiter-style, evidence-backed explanation referencing specific
+    profile facts, JD connection, strengths, and tradeoffs.
+    
+    Design goal: pass the Stage 4 manual review checks:
+      - Specific facts from the candidate's profile
+      - Connection to specific JD requirements
+      - Honest concerns where gaps exist
+      - No hallucination
+      - Substantive variation between candidates
+      - Tone matches the rank
     """
     sc = cand.get("scorecard", {})
     ev = sc.get("evidence", {})
     
-    score = sc.get("overall_score", 0.0)
-    semantic = sc.get("semantic_match", 0.0)
-    hard = sc.get("hard_skill_match", 0.0)
-    beh = sc.get("behavioral_match", 0.0)
+    overall = sc.get("overall_score", 0.0)
     rel_years = ev.get("relevant_years", 0.0)
+    notice = ev.get("notice_days", 0)
+    github = ev.get("github_score", 0.0)
+    views = ev.get("recruiter_views", 0)
+    is_open = ev.get("open_to_work", False)
+    current_title = ev.get("current_title", "")
+    location = ev.get("location", "")
     
-    # 1. Opening Rating (varied language)
-    if score >= 0.8:
-        rating = "Excellent match"
-    elif score >= 0.7:
-        rating = "Strong match"
-    elif score >= 0.6:
-        rating = "Good match"
-    else:
-        rating = "Potential match"
-        
-    reasoning = f"{rating} (Overall: {score*100:.1f}%). "
+    # Feature scores for explanation
+    retrieval = sc.get("retrieval_relevance", 0.0)
+    product_exec = sc.get("product_execution", 0.0)
+    eval_sys = sc.get("evaluation_systems", 0.0)
+    vector_sc = sc.get("vector_search", 0.0)
+    stability = sc.get("career_stability", 0.0)
+    activity = sc.get("activity", 0.0)
     
-    # 2. Filter matched skills to only show technical ones
+    # Penalties
+    pen_research = sc.get("research_penalty", 0.0)
+    pen_spec = sc.get("specialization_penalty", 0.0)
+    pen_consulting = sc.get("consulting_penalty", 0.0)
+    
+    # Filter to technical skills for display
     raw_matched = ev.get("matched_skills", [])
     tech_matched = [s for s in raw_matched if is_technical_skill(s)]
-    if not tech_matched and raw_matched:
-        tech_matched = raw_matched[:2]  # Fallback: show first 2 if no tech match
     
-    if len(tech_matched) > 3:
-        display_skills = tech_matched[:3]
-        skills_str = ", ".join(display_skills) + ", etc"
-    elif tech_matched:
-        skills_str = ", ".join(tech_matched)
-    else:
-        skills_str = ""
-
-    # 3. Highlight strongest signal with varied language
-    if semantic >= hard and semantic >= beh:
-        if semantic > 0.7:
-            reasoning += f"Career history and profile strongly align with the JD's core requirements ({semantic*100:.1f}% semantic match). "
+    parts = []
+    
+    # ── 1. Opening — calibrated to rank ──
+    if rank <= 10:
+        if retrieval > 0.4:
+            parts.append(f"Top-tier match for the Senior AI Engineer role (score: {overall:.3f})")
         else:
-            reasoning += f"Good semantic alignment with the role's AI/ML focus ({semantic*100:.1f}%). "
-    elif hard >= semantic and hard >= beh:
-        if skills_str:
-            reasoning += f"Demonstrates key technical competencies: {skills_str} ({hard*100:.1f}% skill match). "
-        else:
-            reasoning += f"Strong technical skill alignment ({hard*100:.1f}%). "
+            parts.append(f"Strong overall match (score: {overall:.3f})")
+    elif rank <= 30:
+        parts.append(f"Strong match (score: {overall:.3f})")
+    elif rank <= 60:
+        parts.append(f"Good match (score: {overall:.3f})")
     else:
-        if beh > 0.85:
-            reasoning += f"Excellent availability and engagement signals ({beh*100:.1f}% behavioral score). "
-        else:
-            reasoning += f"Favorable hiring readiness indicators ({beh*100:.1f}%). "
-        
-    # 4. Evidence line with experience context
-    years_exp = ev.get('years_exp', 0)
-    notice = ev.get('notice_days', 0)
-    github = ev.get('github_score', 0)
+        parts.append(f"Viable candidate (score: {overall:.3f})")
     
-    # Experience context relative to JD sweet spot
-    if 5 <= rel_years <= 9:
-        exp_context = f"{rel_years:.1f} yrs relevant experience (in JD sweet spot)"
-    elif rel_years > 9:
-        exp_context = f"{rel_years:.1f} yrs relevant experience (senior)"
+    # ── 2. Core strength — retrieval/search/ranking experience ──
+    if retrieval >= 0.5:
+        parts.append("with demonstrated production retrieval and ranking experience")
+    elif retrieval >= 0.25:
+        parts.append("with relevant search/ranking exposure")
+    elif product_exec >= 0.4:
+        parts.append("with strong production engineering track record")
+    
+    # ── 3. Product execution ──
+    if product_exec >= 0.5:
+        parts.append("evidence of shipping ML systems to production")
+    
+    # ── 4. Evaluation systems ──
+    if eval_sys >= 0.3:
+        parts.append("experience with evaluation frameworks (NDCG/MRR/A-B testing)")
+    
+    # ── 5. Vector search ──
+    if vector_sc >= 0.4:
+        parts.append("hands-on vector-search infrastructure experience")
+    
+    # ── 6. Technical skills ──
+    if len(tech_matched) >= 3:
+        display = tech_matched[:4]
+        parts.append(f"key skills: {', '.join(display)}")
+    elif len(tech_matched) >= 1:
+        parts.append(f"relevant skills: {', '.join(tech_matched)}")
+    
+    # ── 7. Experience range ──
+    if 5.0 <= rel_years <= 9.0:
+        parts.append(f"{rel_years:.1f} years relevant experience (within JD target range)")
+    elif rel_years > 9.0:
+        parts.append(f"{rel_years:.1f} years relevant experience (senior)")
     else:
-        exp_context = f"{rel_years:.1f} yrs relevant experience"
+        parts.append(f"{rel_years:.1f} years relevant experience")
     
-    reasoning += f"Evidence: {exp_context}"
+    # ── 8. Career stability ──
+    if stability >= 0.8:
+        parts.append("stable career progression")
+    elif stability < 0.4:
+        parts.append("some career stability concerns")
     
+    # ── 9. Activity & availability signals ──
+    availability_parts = []
+    if is_open:
+        availability_parts.append("actively open to work")
     if notice == 0:
-        reasoning += ", immediate joiner"
+        availability_parts.append("immediate joiner")
     elif notice <= 30:
-        reasoning += f", {notice} day notice"
-    
+        availability_parts.append(f"{notice}-day notice")
+    if views >= 10:
+        availability_parts.append("strong recruiter engagement")
+    elif views >= 5:
+        availability_parts.append("moderate recruiter interest")
     if github > 7.0:
-        reasoning += f", active GitHub contributor (score: {github})."
+        availability_parts.append(f"active GitHub contributor (score: {github:.0f})")
+    
+    if availability_parts:
+        parts.append(", ".join(availability_parts))
+    
+    # ── 10. Tradeoffs / concerns (honest) ──
+    concerns = []
+    if notice > 45:
+        concerns.append(f"{notice}-day notice period")
+    if pen_research > 0.2:
+        concerns.append("research-heavy background with limited production evidence")
+    if pen_consulting > 0.2:
+        concerns.append("predominantly consulting-company career history")
+    if pen_spec > 0.2:
+        concerns.append("primary expertise in CV/Speech/Robotics rather than NLP/IR")
+    if activity < 0.3:
+        concerns.append("limited recent platform activity")
+    if stability < 0.3:
+        concerns.append("frequent job changes")
+    
+    if concerns:
+        parts.append("Tradeoffs: " + "; ".join(concerns))
+    
+    # ── Build final reasoning ──
+    # Join with proper punctuation
+    if len(parts) <= 2:
+        reasoning = ". ".join(parts) + "."
     else:
-        reasoning += "."
+        # First part is the opening, rest are comma-separated details
+        opening = parts[0]
+        details = parts[1:]
         
+        # Split into strengths and tradeoffs
+        tradeoff_parts = [p for p in details if p.startswith("Tradeoffs:")]
+        strength_parts = [p for p in details if not p.startswith("Tradeoffs:")]
+        
+        reasoning = opening + ". " if not opening.endswith(".") else opening + " "
+        
+        if strength_parts:
+            # Capitalize the first strength
+            strength_parts[0] = strength_parts[0][0].upper() + strength_parts[0][1:]
+            reasoning += ", ".join(strength_parts) + "."
+        
+        if tradeoff_parts:
+            reasoning += " " + tradeoff_parts[0] + "."
+    
     return reasoning
+
 
 def generate_submission_csv(candidates, output_path):
     """
@@ -122,7 +199,7 @@ def generate_submission_csv(candidates, output_path):
     results = []
     
     for rank, cand in enumerate(candidates, start=1):
-        reasoning = generate_reasoning(cand)
+        reasoning = generate_reasoning(cand, rank)
         results.append({
             "candidate_id": cand.get("candidate_id", ""),
             "rank": rank,
@@ -133,3 +210,53 @@ def generate_submission_csv(candidates, output_path):
     df = pd.DataFrame(results)
     df.to_csv(output_path, index=False)
     print(f"Successfully wrote submission to {output_path}")
+
+
+def generate_debug_csv(candidates, output_path):
+    """
+    Writes a debug CSV with all feature scores and penalties for manual inspection.
+    This file is NOT submitted — it's for internal analysis only.
+    """
+    rows = []
+    for rank, cand in enumerate(candidates, start=1):
+        sc = cand.get("scorecard", {})
+        ev = sc.get("evidence", {})
+        rows.append({
+            "rank": rank,
+            "candidate_id": cand.get("candidate_id", ""),
+            "final_score": f"{sc.get('overall_score', 0.0):.4f}",
+            # Core
+            "semantic_match": f"{sc.get('semantic_match', 0.0):.4f}",
+            "hard_skill_match": f"{sc.get('hard_skill_match', 0.0):.4f}",
+            "blended_semantic": f"{sc.get('blended_semantic', 0.0):.4f}",
+            # Domain features
+            "retrieval_relevance": f"{sc.get('retrieval_relevance', 0.0):.4f}",
+            "product_execution": f"{sc.get('product_execution', 0.0):.4f}",
+            "evaluation_systems": f"{sc.get('evaluation_systems', 0.0):.4f}",
+            "vector_search": f"{sc.get('vector_search', 0.0):.4f}",
+            "nlp_llm": f"{sc.get('nlp_llm', 0.0):.4f}",
+            "title_relevance": f"{sc.get('title_relevance', 0.0):.4f}",
+            "experience_alignment": f"{sc.get('experience_alignment', 0.0):.4f}",
+            "career_stability": f"{sc.get('career_stability', 0.0):.4f}",
+            "activity": f"{sc.get('activity', 0.0):.4f}",
+            "availability": f"{sc.get('availability', 0.0):.4f}",
+            "consistency": f"{sc.get('consistency', 0.0):.4f}",
+            # Penalties
+            "pen_research": f"{sc.get('research_penalty', 0.0):.4f}",
+            "pen_specialization": f"{sc.get('specialization_penalty', 0.0):.4f}",
+            "pen_consulting": f"{sc.get('consulting_penalty', 0.0):.4f}",
+            "penalty_total": f"{sc.get('penalty_total', 0.0):.4f}",
+            # Evidence
+            "years_exp": ev.get("years_exp", 0),
+            "relevant_years": f"{ev.get('relevant_years', 0.0):.1f}",
+            "notice_days": ev.get("notice_days", 0),
+            "current_title": ev.get("current_title", ""),
+            "location": ev.get("location", ""),
+            "open_to_work": ev.get("open_to_work", False),
+            "github_score": ev.get("github_score", 0),
+            "matched_skills": "; ".join(ev.get("matched_skills", [])[:6]),
+        })
+    
+    df = pd.DataFrame(rows)
+    df.to_csv(output_path, index=False)
+    print(f"Successfully wrote debug output to {output_path}")

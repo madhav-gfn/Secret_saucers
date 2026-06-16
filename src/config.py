@@ -9,13 +9,44 @@ SAMPLE_CANDIDATES_PATH = DATA_DIR / "sample_candidates.json"
 FULL_CANDIDATES_PATH = DATA_DIR / "candidates.jsonl"
 JD_PATH = DATA_DIR / "job_description.txt"
 
-# Synthesized Pipeline Weights
-WEIGHTS = {
-    "semantic": 0.40,
-    "hard_skills": 0.30,
-    "behavioral": 0.30
+# ──────────────────────────────────────────────
+# Feature Weights (must sum to 1.0)
+# ──────────────────────────────────────────────
+# Design rationale:
+#   - semantic_similarity is reduced from the previous 40% to 18%.
+#     Embeddings are good for broad retrieval but cannot distinguish
+#     "built a ranking system" from "took a course on ranking."
+#   - retrieval_relevance is the #1 engineered feature (15%) because
+#     the JD's ideal candidate is explicitly a retrieval/ranking/search person.
+#   - product_execution (12%) rewards "shipped" > "studied" — JD's core value.
+#   - evaluation_systems (10%) is rare and highly valued by the JD.
+#   - No single feature exceeds 18%.
+
+FEATURE_WEIGHTS = {
+    "semantic":              0.18,
+    "retrieval_relevance":   0.15,
+    "product_execution":     0.12,
+    "evaluation_systems":    0.10,
+    "title_relevance":       0.08,
+    "experience_alignment":  0.08,
+    "career_stability":      0.08,
+    "activity":              0.06,
+    "availability":          0.05,
+    "vector_search":         0.04,
+    "nlp_llm":               0.03,
+    "consistency":           0.03,
 }
 
-# Trap Penalties
-NOTICE_PERIOD_TRAP_DAYS = 60
-MIN_EXPERIENCE_YEARS = 3
+# Penalty deduction caps (applied as score -= penalty_value * cap)
+PENALTY_CAPS = {
+    "research":        0.08,
+    "specialization":  0.06,
+    "consulting":      0.06,
+}
+
+# Hard-skill matching weight (folded into semantic for Stage 2)
+HARD_SKILL_BLEND = 0.35  # Within the semantic slot, 35% hard-skill + 65% embedding
+
+# Trap Penalties (legacy — kept for Stage 1 hard filters)
+NOTICE_PERIOD_TRAP_DAYS = 90  # Relaxed from 60; soft penalty handles 45-90 range
+MIN_EXPERIENCE_YEARS = 2      # Relaxed from 3; soft penalty handles nuance
