@@ -6,13 +6,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 BASE_DIR = PROJECT_ROOT
 
 def find_data_dir():
-    """
-    Find the Redrob challenge data without machine-specific paths.
-
-    For judging/reproduction, keep the data bundle inside the repo in one of the
-    supported relative layouts below. REDROB_DATA_DIR is only an optional escape
-    hatch for local experiments.
-    """
+    
     candidates = []
 
     env_path = os.environ.get("REDROB_DATA_DIR")
