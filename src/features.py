@@ -30,18 +30,27 @@ def _gather_text(cand):
     return " ".join(parts).lower()
 
 
-def _count_keyword_hits(text, keywords):
-    """Count how many distinct keywords appear in text (word-boundary safe)."""
-    hits = 0
+def _keyword_matches(text, keywords):
+    """Find non-overlapping keyword matches using word-safe comparisons."""
+    matches = []
     for kw in keywords:
-        # Use word boundary for single-word keywords, substring for multi-word
         if " " in kw or "-" in kw:
             if kw in text:
-                hits += 1
+                matches.append(kw)
         else:
             if re.search(r'\b' + re.escape(kw) + r'\b', text):
-                hits += 1
-    return hits
+                matches.append(kw)
+
+    deduplicated = []
+    for kw in sorted(matches, key=len, reverse=True):
+        if not any(kw in longer for longer in deduplicated):
+            deduplicated.append(kw)
+    return sorted(deduplicated)
+
+
+def _count_keyword_hits(text, keywords):
+    """Count how many distinct, non-overlapping keywords appear in text."""
+    return len(_keyword_matches(text, keywords))
 
 
 def _career_text(cand):
@@ -53,27 +62,41 @@ def _career_text(cand):
     return " ".join(parts).lower()
 
 
+def _matched_keywords(text, keywords):
+    """Return the distinct keywords present in text using the scoring matcher."""
+    return _keyword_matches(text, keywords)
+
+
 # ──────────────────────────────────────────────
 # A. RETRIEVAL / SEARCH RELEVANCE  (highest impact)
 # ──────────────────────────────────────────────
 
-_RETRIEVAL_KEYWORDS = {
-    "retrieval", "search", "ranking", "recommendation", "recommender",
+_RETRIEVAL_EXPLICIT = {
     "information retrieval", "search engine", "search system",
     "search quality", "search relevance", "search backend",
     "ranking system", "ranking model", "learning to rank", "learning-to-rank",
-    "ltr", "candidate matching", "relevance engineering",
+    "candidate matching", "relevance engineering",
     "marketplace search", "marketplace ranking",
-    "recommendation system", "recommendation systems", "recommendation engine", "recsys",
-    "retrieval system", "retrieval engine", "matching systems",
+    "recommendation system", "recommendation engine",
+    "retrieval system", "retrieval engine", "matching system",
     "query understanding", "query rewriting",
-    "elastic", "solr", "lucene",
-    "bm25", "tf-idf", "tfidf",
     "re-ranking", "reranking", "re-ranker", "reranker",
     "hybrid search", "dense retrieval", "sparse retrieval",
     "semantic search", "vector search",
-    "personalization", "personalization systems", "content discovery",
+    "personalization system", "content discovery",
 }
+
+_RETRIEVAL_TECHNICAL = {
+    "ltr", "recsys", "bm25", "tf-idf", "tfidf", "solr", "lucene",
+    "re-ranking", "reranking", "re-ranker", "reranker",
+}
+
+_RETRIEVAL_GENERIC = {
+    "retrieval", "search", "ranking", "recommendation", "recommender",
+    "personalization", "matching", "relevance",
+}
+
+_RETRIEVAL_KEYWORDS = _RETRIEVAL_EXPLICIT | _RETRIEVAL_TECHNICAL | _RETRIEVAL_GENERIC
 
 
 def retrieval_relevance_score(cand):
@@ -81,19 +104,32 @@ def retrieval_relevance_score(cand):
     The single most important engineered feature.
     Measures evidence of production retrieval / search / ranking / recommendation work.
     """
-    text = _gather_text(cand)
-    hits = _count_keyword_hits(text, _RETRIEVAL_KEYWORDS)
-
-    # Also check career descriptions for deeper evidence
     career = _career_text(cand)
-    career_hits = _count_keyword_hits(career, _RETRIEVAL_KEYWORDS)
+    profile = cand.get("profile", {})
+    profile_text = " ".join([
+        profile.get("current_title", ""),
+        profile.get("headline", ""),
+        profile.get("summary", ""),
+    ]).lower()
+    skills_text = " ".join(s.get("name", "") for s in cand.get("skills", [])).lower()
+    evidence_text = career + " " + profile_text
 
-    # Career-description hits are worth more (evidence of actually doing the work)
-    raw = hits + career_hits * 0.5
+    explicit_hits = _count_keyword_hits(evidence_text, _RETRIEVAL_EXPLICIT)
+    technical_hits = _count_keyword_hits(evidence_text, _RETRIEVAL_TECHNICAL)
+    generic_hits = _count_keyword_hits(career, _RETRIEVAL_GENERIC)
+    skill_hits = _count_keyword_hits(skills_text, _RETRIEVAL_KEYWORDS)
 
-    # Normalize: 1 hit = 0.15, 3 hits = 0.45, 6+ hits = saturates near 1.0
-    score = min(1.0, raw / 7.0)
-    return score
+    score = (
+        explicit_hits * 0.30
+        + technical_hits * 0.22
+        + min(generic_hits, 3) * 0.08
+        + min(skill_hits, 3) * 0.05
+    )
+
+    if explicit_hits == 0 and technical_hits == 0 and generic_hits == 0:
+        score = min(score, 0.25)
+
+    return min(1.0, score)
 
 
 # ──────────────────────────────────────────────
@@ -163,19 +199,24 @@ def product_execution_score(cand):
 # C. EVALUATION SYSTEMS SCORE
 # ──────────────────────────────────────────────
 
-_EVAL_KEYWORDS = {
+_EVAL_STRONG = {
     "ndcg", "mrr", "map", "mean average precision",
-    "precision", "recall", "f1",
     "a/b test", "a/b testing", "ab test", "ab testing",
     "offline evaluation", "online evaluation",
     "search metrics", "ranking metrics",
     "experimentation", "experiment framework",
     "relevance evaluation", "relevance judgment",
     "evaluation framework", "eval framework",
-    "benchmark", "ground truth",
+    "ranking evaluation", "search evaluation",
+}
+
+_EVAL_SUPPORTING = {
+    "precision", "recall", "f1", "benchmark", "ground truth",
     "click-through rate", "ctr",
     "conversion rate",
 }
+
+_EVAL_KEYWORDS = _EVAL_STRONG | _EVAL_SUPPORTING
 
 
 def evaluation_system_score(cand):
@@ -193,19 +234,25 @@ def evaluation_system_score(cand):
         for acc in job.get("accomplishments", []):
             combined += " " + acc.lower()
             
-    hits = _count_keyword_hits(combined, _EVAL_KEYWORDS)
+    strong_hits = _count_keyword_hits(combined, _EVAL_STRONG)
+    supporting_hits = _count_keyword_hits(combined, _EVAL_SUPPORTING)
 
-    score = min(1.0, hits / 4.0)
-    return score
+    score = strong_hits * 0.32 + min(supporting_hits, 3) * 0.08
+    if strong_hits == 0:
+        score = min(score, 0.24)
+    return min(1.0, score)
 
 
 # ──────────────────────────────────────────────
 # E. VECTOR SEARCH SCORE
 # ──────────────────────────────────────────────
 
-_VECTOR_KEYWORDS = {
+_VECTOR_PRODUCTS = {
     "faiss", "pinecone", "milvus", "qdrant", "weaviate",
     "elasticsearch", "opensearch", "elastic search",
+}
+
+_VECTOR_CONCEPTS = {
     "vector database", "vector db", "vector store",
     "vector search", "vector index",
     "hybrid search", "dense retrieval",
@@ -213,14 +260,54 @@ _VECTOR_KEYWORDS = {
     "hnsw", "ivf",
 }
 
+_VECTOR_KEYWORDS = _VECTOR_PRODUCTS | _VECTOR_CONCEPTS
+
 
 def vector_search_score(cand):
     """Rewards hands-on experience with vector databases and search infrastructure."""
-    text = _gather_text(cand)
-    hits = _count_keyword_hits(text, _VECTOR_KEYWORDS)
+    career = _career_text(cand)
+    summary = cand.get("profile", {}).get("summary", "").lower()
+    evidence_text = career + " " + summary
+    skills_text = " ".join(s.get("name", "") for s in cand.get("skills", [])).lower()
 
-    score = min(1.0, hits / 4.0)
-    return score
+    evidence_products = _count_keyword_hits(evidence_text, _VECTOR_PRODUCTS)
+    evidence_concepts = _count_keyword_hits(evidence_text, _VECTOR_CONCEPTS)
+    skill_products = _count_keyword_hits(skills_text, _VECTOR_PRODUCTS)
+    skill_concepts = _count_keyword_hits(skills_text, _VECTOR_CONCEPTS)
+
+    score = (
+        evidence_products * 0.30
+        + evidence_concepts * 0.22
+        + min(skill_products, 3) * 0.12
+        + min(skill_concepts, 2) * 0.06
+    )
+
+    if evidence_products == 0 and evidence_concepts == 0:
+        score = min(score, 0.42)
+
+    return min(1.0, score)
+
+
+def feature_evidence(cand):
+    """Return concrete text evidence used by recruiter-facing explanations."""
+    career = _career_text(cand)
+    profile = cand.get("profile", {})
+    summary = profile.get("summary", "").lower()
+    accomplishments = []
+    for job in cand.get("career_history", []):
+        accomplishments.extend(str(item).lower() for item in job.get("accomplishments", []))
+    evidence_text = " ".join([career, summary, *accomplishments])
+
+    return {
+        "retrieval_relevance": _matched_keywords(
+            evidence_text, _RETRIEVAL_EXPLICIT | _RETRIEVAL_TECHNICAL
+        ),
+        "evaluation_systems": _matched_keywords(evidence_text, _EVAL_STRONG),
+        "vector_search": _matched_keywords(
+            evidence_text, _VECTOR_PRODUCTS | _VECTOR_CONCEPTS
+        ),
+        "product_execution": _matched_keywords(evidence_text, _EXECUTION_KEYWORDS),
+    }
 
 
 # ──────────────────────────────────────────────

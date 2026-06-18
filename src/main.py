@@ -4,7 +4,12 @@ from src.config import SAMPLE_CANDIDATES_PATH, FULL_CANDIDATES_PATH, JD_PATH, BA
 from src.stage1_filter import stream_and_filter_candidates
 from src.stage2_ensemble import EnsembleMatcher
 from src.stage3_scorecard import rank_candidates
-from src.stage4_explanation import generate_submission_csv, generate_debug_csv, generate_top20_debug_csv
+from src.stage4_explanation import (
+    generate_debug_csv,
+    generate_submission_csv,
+    generate_top20_debug_csv,
+    print_feature_diagnostics,
+)
 
 def run_pipeline(use_sample=False):
     data_path = SAMPLE_CANDIDATES_PATH if use_sample else FULL_CANDIDATES_PATH
@@ -36,6 +41,7 @@ def run_pipeline(use_sample=False):
     
     generate_submission_csv(top_candidates, output_path=str(output_filename))
     generate_debug_csv(top_candidates, output_path=str(debug_filename))
+    print_feature_diagnostics(top_candidates)
     
     top20_filename = BASE_DIR / ("sample_top20_debug.csv" if use_sample else "top20_debug.csv")
     generate_top20_debug_csv(top_candidates, output_path=str(top20_filename))
