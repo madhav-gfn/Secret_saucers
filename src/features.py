@@ -64,15 +64,15 @@ _RETRIEVAL_KEYWORDS = {
     "ranking system", "ranking model", "learning to rank", "learning-to-rank",
     "ltr", "candidate matching", "relevance engineering",
     "marketplace search", "marketplace ranking",
-    "recommendation system", "recommendation engine", "recsys",
-    "retrieval system", "retrieval engine",
+    "recommendation system", "recommendation systems", "recommendation engine", "recsys",
+    "retrieval system", "retrieval engine", "matching systems",
     "query understanding", "query rewriting",
     "elastic", "solr", "lucene",
     "bm25", "tf-idf", "tfidf",
     "re-ranking", "reranking", "re-ranker", "reranker",
     "hybrid search", "dense retrieval", "sparse retrieval",
     "semantic search", "vector search",
-    "personalization", "content discovery",
+    "personalization", "personalization systems", "content discovery",
 }
 
 
@@ -97,7 +97,38 @@ def retrieval_relevance_score(cand):
 
 
 # ──────────────────────────────────────────────
-# B. PRODUCT EXECUTION SCORE
+# B. PRODUCT COMPANY SCORE
+# ──────────────────────────────────────────────
+
+_PRODUCT_COMPANY_KEYWORDS = {
+    "startup", "start-up", "saas", "marketplace", "consumer tech",
+    "consumer product", "b2b saas", "b2c", "product engineering",
+    "flipkart", "swiggy", "razorpay", "zomato", "ola", "meesho",
+    "uber", "airbnb", "doordash", "instacart", "stripe", "cred",
+    "gojek", "grab", "agoda", "booking.com"
+}
+
+def product_company_score(cand):
+    """
+    Rewards experience in product startups, SaaS, marketplaces, etc.
+    Applied as a positive signal rather than a hard requirement.
+    """
+    career = _career_text(cand)
+    hits = _count_keyword_hits(career, _PRODUCT_COMPANY_KEYWORDS)
+    
+    # Also check company names explicitly
+    for job in cand.get("career_history", []):
+        company = job.get("company", "").lower()
+        if any(kw in company for kw in _PRODUCT_COMPANY_KEYWORDS):
+            hits += 2
+            
+    # Normalize: 2 hits = 0.5, 4 hits = 1.0
+    score = min(1.0, hits / 4.0)
+    return score
+
+
+# ──────────────────────────────────────────────
+# C. PRODUCT EXECUTION SCORE
 # ──────────────────────────────────────────────
 
 _EXECUTION_KEYWORDS = {
@@ -149,18 +180,27 @@ _EVAL_KEYWORDS = {
 
 def evaluation_system_score(cand):
     """
-    The JD references evaluation frameworks (NDCG, MRR, MAP, A/B testing) multiple times.
-    Candidates who have built eval systems are rare and highly valued.
+    The JD references evaluation frameworks (NDCG, MRR, MAP, A/B testing).
+    Requires stronger evidence from career descriptions, achievements, and summaries
+    rather than isolated skills to reduce false positives.
     """
-    text = _gather_text(cand)
-    hits = _count_keyword_hits(text, _EVAL_KEYWORDS)
+    career = _career_text(cand)
+    summary = cand.get("profile", {}).get("summary", "").lower()
+    combined = career + " " + summary
+    
+    # Also check accomplishments if present
+    for job in cand.get("career_history", []):
+        for acc in job.get("accomplishments", []):
+            combined += " " + acc.lower()
+            
+    hits = _count_keyword_hits(combined, _EVAL_KEYWORDS)
 
-    score = min(1.0, hits / 5.0)
+    score = min(1.0, hits / 4.0)
     return score
 
 
 # ──────────────────────────────────────────────
-# D. VECTOR SEARCH SCORE
+# E. VECTOR SEARCH SCORE
 # ──────────────────────────────────────────────
 
 _VECTOR_KEYWORDS = {
@@ -184,7 +224,7 @@ def vector_search_score(cand):
 
 
 # ──────────────────────────────────────────────
-# E. NLP / LLM SCORE  (useful but NOT dominant)
+# F. NLP / LLM SCORE  (useful but NOT dominant)
 # ──────────────────────────────────────────────
 
 _NLP_KEYWORDS = {
@@ -219,7 +259,7 @@ def nlp_llm_score(cand):
 
 
 # ──────────────────────────────────────────────
-# F. TITLE RELEVANCE
+# G. TITLE RELEVANCE
 # ──────────────────────────────────────────────
 
 _STRONG_TITLES = {
@@ -285,7 +325,7 @@ def title_relevance_score(cand):
 
 
 # ──────────────────────────────────────────────
-# G. EXPERIENCE ALIGNMENT
+# H. EXPERIENCE ALIGNMENT
 # ──────────────────────────────────────────────
 
 def experience_alignment_score(cand):
@@ -314,7 +354,7 @@ def experience_alignment_score(cand):
 
 
 # ──────────────────────────────────────────────
-# H. CAREER STABILITY
+# I. CAREER STABILITY
 # ──────────────────────────────────────────────
 
 def career_stability_score(cand):
@@ -355,7 +395,7 @@ def career_stability_score(cand):
 
 
 # ──────────────────────────────────────────────
-# I. ACTIVITY SCORE
+# J. ACTIVITY SCORE
 # ──────────────────────────────────────────────
 
 def activity_score(cand):
@@ -398,7 +438,7 @@ def activity_score(cand):
 
 
 # ──────────────────────────────────────────────
-# J. AVAILABILITY SCORE
+# K. AVAILABILITY SCORE
 # ──────────────────────────────────────────────
 
 def availability_score(cand):
@@ -413,18 +453,16 @@ def availability_score(cand):
     notice = signals.get("notice_period_days", 0)
 
     # Notice period scoring
-    if notice <= 0:
-        notice_score = 1.0  # Immediate joiner
-    elif notice <= 15:
-        notice_score = 0.95
+    if notice <= 15:
+        notice_score = 1.0  # Strong boost
     elif notice <= 30:
-        notice_score = 0.85
+        notice_score = 0.8  # Positive
     elif notice <= 45:
-        notice_score = 0.55
+        notice_score = 0.5  # Small penalty
     elif notice <= 60:
-        notice_score = 0.30
+        notice_score = 0.2  # Moderate penalty
     else:
-        notice_score = 0.15
+        notice_score = 0.05 # Meaningful penalty for 90+ days
 
     # Open-to-work boost
     open_score = 0.8 if is_open else 0.3
@@ -437,7 +475,7 @@ def availability_score(cand):
 
 
 # ──────────────────────────────────────────────
-# K. CONSISTENCY / HONEYPOT DETECTION
+# L. CONSISTENCY / HONEYPOT DETECTION
 # ──────────────────────────────────────────────
 
 def consistency_score(cand):
@@ -491,7 +529,7 @@ def consistency_score(cand):
 
 
 # ──────────────────────────────────────────────
-# L. RESEARCH PENALTY
+# M. RESEARCH PENALTY
 # ──────────────────────────────────────────────
 
 _RESEARCH_TITLES = {
@@ -549,7 +587,7 @@ def research_penalty(cand):
 
 
 # ──────────────────────────────────────────────
-# M. SPECIALIZATION MISMATCH PENALTY
+# N. SPECIALIZATION MISMATCH PENALTY
 # ──────────────────────────────────────────────
 
 _CV_SPEECH_ROBOTICS = {
@@ -578,7 +616,11 @@ def specialization_mismatch_penalty(cand):
     text = _gather_text(cand)
 
     cv_hits = _count_keyword_hits(text, _CV_SPEECH_ROBOTICS)
-    nlp_hits = _count_keyword_hits(text, _NLP_RETRIEVAL_EVIDENCE)
+    
+    # Include retrieval keywords in the NLP/IR evidence check to ensure
+    # we don't penalize someone with both CV and solid retrieval experience
+    combined_evidence = _NLP_RETRIEVAL_EVIDENCE.union(_RETRIEVAL_KEYWORDS)
+    nlp_hits = _count_keyword_hits(text, combined_evidence)
 
     if cv_hits == 0:
         return 0.0
@@ -595,7 +637,7 @@ def specialization_mismatch_penalty(cand):
 
 
 # ──────────────────────────────────────────────
-# N. CONSULTING PENALTY
+# O. CONSULTING PENALTY
 # ──────────────────────────────────────────────
 
 _CONSULTING_FIRMS = {
@@ -659,6 +701,7 @@ def compute_all_features(cand):
     Attaches them directly to the candidate dict and returns the dict.
     """
     cand["feat_retrieval_relevance"] = retrieval_relevance_score(cand)
+    cand["feat_product_company"] = product_company_score(cand)
     cand["feat_product_execution"] = product_execution_score(cand)
     cand["feat_evaluation_systems"] = evaluation_system_score(cand)
     cand["feat_vector_search"] = vector_search_score(cand)

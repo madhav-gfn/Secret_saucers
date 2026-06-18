@@ -23,6 +23,7 @@ def build_scorecard(cand):
     # Domain-specific features from features.py
     feat_retrieval   = cand.get("feat_retrieval_relevance", 0.0)
     feat_product     = cand.get("feat_product_execution", 0.0)
+    feat_product_comp= cand.get("feat_product_company", 0.0)
     feat_eval        = cand.get("feat_evaluation_systems", 0.0)
     feat_title       = cand.get("feat_title_relevance", 0.0)
     feat_exp_align   = cand.get("feat_experience_alignment", 0.0)
@@ -47,6 +48,7 @@ def build_scorecard(cand):
         blended_semantic     * w["semantic"]
         + feat_retrieval     * w["retrieval_relevance"]
         + feat_product       * w["product_execution"]
+        + feat_product_comp  * w.get("product_company", 0.0)
         + feat_eval          * w["evaluation_systems"]
         + feat_title         * w["title_relevance"]
         + feat_exp_align     * w["experience_alignment"]
@@ -84,6 +86,7 @@ def build_scorecard(cand):
         # Domain features
         "retrieval_relevance": feat_retrieval,
         "product_execution": feat_product,
+        "product_company": feat_product_comp,
         "evaluation_systems": feat_eval,
         "vector_search": feat_vector,
         "nlp_llm": feat_nlp,
