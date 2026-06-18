@@ -1,10 +1,44 @@
+import os
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
-# Keep this project self-contained: use only the Redrob bundle inside RUNS.
 BASE_DIR = PROJECT_ROOT
-DATA_DIR = PROJECT_ROOT / "[PUB] India_runs_data_and_ai_challenge" / "India_runs_data_and_ai_challenge"
+
+def find_data_dir():
+    """
+    Find the Redrob challenge data without machine-specific paths.
+
+    For judging/reproduction, keep the data bundle inside the repo in one of the
+    supported relative layouts below. REDROB_DATA_DIR is only an optional escape
+    hatch for local experiments.
+    """
+    candidates = []
+
+    env_path = os.environ.get("REDROB_DATA_DIR")
+    if env_path:
+        candidates.append(Path(env_path))
+
+    candidates.extend([
+        PROJECT_ROOT / "[PUB] India_runs_data_and_ai_challenge" / "India_runs_data_and_ai_challenge",
+        PROJECT_ROOT / "India_runs_data_and_ai_challenge" / "India_runs_data_and_ai_challenge",
+        PROJECT_ROOT / "India_runs_data_and_ai_challenge",
+        PROJECT_ROOT / "Documentation",
+        PROJECT_ROOT,
+    ])
+
+    for path in candidates:
+        if (path / "job_description.txt").exists():
+            return path
+
+    raise FileNotFoundError(
+        "Could not find Redrob data. Put job_description.txt and candidates.jsonl "
+        "inside RUNS/[PUB] India_runs_data_and_ai_challenge/India_runs_data_and_ai_challenge "
+        "or set REDROB_DATA_DIR."
+    )
+
+
+DATA_DIR = find_data_dir()
 SAMPLE_CANDIDATES_PATH = DATA_DIR / "sample_candidates.json"
 FULL_CANDIDATES_PATH = DATA_DIR / "candidates.jsonl"
 JD_PATH = DATA_DIR / "job_description.txt"
