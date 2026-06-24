@@ -2,14 +2,18 @@ import sys
 import time
 from pathlib import Path
 
+# Import torch first on Windows to avoid DLL initialization conflicts with sklearn/scipy/faiss
+import torch
+
 # Ensure the project root is on sys.path so `from src.xxx` works
 # regardless of how this script is invoked (any machine, any cwd).
 _PROJECT_ROOT = str(Path(__file__).resolve().parent.parent)
 if _PROJECT_ROOT not in sys.path:
     sys.path.insert(0, _PROJECT_ROOT)
 from src.config import SAMPLE_CANDIDATES_PATH, FULL_CANDIDATES_PATH, JD_PATH, BASE_DIR
-from src.stage1_filter import stream_and_filter_candidates
 from src.stage2_ensemble import EnsembleMatcher
+from src.stage1_filter import stream_and_filter_candidates
+from src.stage1b_tfidf import tfidf_prefilter
 from src.stage3_scorecard import rank_candidates
 from src.stage4_explanation import (
     generate_debug_csv,
@@ -30,11 +34,16 @@ def run_pipeline(use_sample=False):
     s1_candidates = list(stream_and_filter_candidates(data_path))
     print(f"Stage 1 Filtering: Retained {len(s1_candidates)} candidates.")
     
+    # 1.5. STAGE 1.5: TF-IDF Pre-filter (reduce pool for fast embedding)
+    print("\n--- STAGE 1.5: TF-IDF Pre-filter ---")
+    s1b_candidates = tfidf_prefilter(s1_candidates, JD_PATH, top_k=3000)
+    print(f"Stage 1.5 Filtering: Retained {len(s1b_candidates)} candidates.")
+    
     # 2. STAGE 2: Semantic + Feature Extraction
     print("\n--- STAGE 2: Semantic Matching + Feature Extraction ---")
     matcher = EnsembleMatcher()
     matcher.load_jd(JD_PATH)
-    s2_candidates = matcher.score_candidates(s1_candidates)
+    s2_candidates = matcher.score_candidates(s1b_candidates)
     
     # Stage 3: Expanded scorecard ranking
     print("\n--- STAGE 3: 12-Feature Scorecard Ranking ---")

@@ -105,7 +105,10 @@ class EnsembleMatcher:
             career_history = c.get("career_history", [])[:2]
             career_text = " ".join([job.get("description", "") for job in career_history])
             
-            texts.append(f"{profile.get('summary', '')} {career_text} {' '.join(skill_names)}")
+            texts.append(
+                f"{profile.get('current_title', '')} {profile.get('headline', '')} "
+                f"{profile.get('summary', '')} {career_text} {' '.join(skill_names)}"
+            )
             
         print(f"  Encoding {len(texts)} candidates...")
         cand_vectors = self.model.encode(texts, normalize_embeddings=True, batch_size=256, show_progress_bar=False)

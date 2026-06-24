@@ -33,6 +33,8 @@ def build_scorecard(cand):
     feat_vector      = cand.get("feat_vector_search", 0.0)
     feat_nlp         = cand.get("feat_nlp_llm", 0.0)
     feat_consistency = cand.get("feat_consistency", 0.0)
+    feat_skill_assess = cand.get("feat_skill_assessment", 0.0)
+    feat_interview   = cand.get("feat_interview_reliability", 0.0)
 
     # Penalties
     pen_research     = cand.get("pen_research", 0.0)
@@ -58,6 +60,8 @@ def build_scorecard(cand):
         + feat_vector        * w["vector_search"]
         + feat_nlp           * w["nlp_llm"]
         + feat_consistency   * w["consistency"]
+        + feat_skill_assess  * w.get("skill_assessment", 0.0)
+        + feat_interview     * w.get("interview_reliability", 0.0)
     )
 
     # ── Apply penalties as deductions (capped) ──
@@ -96,6 +100,8 @@ def build_scorecard(cand):
         "activity": feat_activity,
         "availability": feat_avail,
         "consistency": feat_consistency,
+        "skill_assessment": feat_skill_assess,
+        "interview_reliability": feat_interview,
         # Penalties
         "research_penalty": pen_research,
         "specialization_penalty": pen_spec,

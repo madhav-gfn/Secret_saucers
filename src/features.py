@@ -112,31 +112,70 @@ def retrieval_relevance_score(cand):
     """
     The single most important engineered feature.
     Measures evidence of production retrieval / search / ranking / recommendation work.
+
+    Uses recency weighting: keywords in the most recent 2 jobs count more
+    than older roles. Requires career description evidence (not just skills)
+    for high scores. Designed to discriminate within the top 100 candidates
+    (previous version saturated at 0.956 mean — too flat for NDCG@10).
     """
-    career = _career_text(cand)
+    career_history = cand.get("career_history", [])
     profile = cand.get("profile", {})
+
+    # Separate recent career (first 2 jobs) from older career
+    recent_parts = []
+    older_parts = []
+    for i, job in enumerate(career_history):
+        text = (job.get("title", "") + " " + job.get("description", "")).lower()
+        if i < 2:
+            recent_parts.append(text)
+        else:
+            older_parts.append(text)
+    recent_text = " ".join(recent_parts)
+    older_text = " ".join(older_parts)
+
     profile_text = " ".join([
         profile.get("current_title", ""),
         profile.get("headline", ""),
         profile.get("summary", ""),
     ]).lower()
     skills_text = " ".join(s.get("name", "") for s in cand.get("skills", [])).lower()
-    evidence_text = career + " " + profile_text
 
-    explicit_hits = _count_keyword_hits(evidence_text, _RETRIEVAL_EXPLICIT)
-    technical_hits = _count_keyword_hits(evidence_text, _RETRIEVAL_TECHNICAL)
-    generic_hits = _count_keyword_hits(career, _RETRIEVAL_GENERIC)
+    # Count hits by source and type — recency matters
+    recent_explicit = _count_keyword_hits(recent_text, _RETRIEVAL_EXPLICIT)
+    recent_technical = _count_keyword_hits(recent_text, _RETRIEVAL_TECHNICAL)
+    older_explicit = _count_keyword_hits(older_text, _RETRIEVAL_EXPLICIT)
+    older_technical = _count_keyword_hits(older_text, _RETRIEVAL_TECHNICAL)
+    profile_hits = _count_keyword_hits(profile_text, _RETRIEVAL_EXPLICIT | _RETRIEVAL_TECHNICAL)
+    generic_hits = _count_keyword_hits(recent_text + " " + older_text, _RETRIEVAL_GENERIC)
     skill_hits = _count_keyword_hits(skills_text, _RETRIEVAL_KEYWORDS)
 
+    # Weighted scoring with diminishing returns per source
     score = (
-        explicit_hits * 0.30
-        + technical_hits * 0.22
-        + min(generic_hits, 3) * 0.08
-        + min(skill_hits, 3) * 0.05
+        min(recent_explicit, 3) * 0.15      # Recent explicit: strongest (max 0.45)
+        + min(recent_technical, 2) * 0.10    # Recent technical: strong (max 0.20)
+        + min(older_explicit, 2) * 0.07      # Older explicit: moderate (max 0.14)
+        + min(older_technical, 2) * 0.05     # Older technical: moderate (max 0.10)
+        + min(profile_hits, 2) * 0.05        # Profile/headline (max 0.10)
+        + min(generic_hits, 3) * 0.03        # Generic terms (max 0.09)
+        + min(skill_hits, 3) * 0.02          # Skill list — weakest (max 0.06)
     )
 
-    if explicit_hits == 0 and technical_hits == 0 and generic_hits == 0:
-        score = min(score, 0.25)
+    # Depth bonus: reward evidence across multiple sources
+    evidence_types = sum([
+        recent_explicit > 0,
+        recent_technical > 0,
+        older_explicit > 0,
+        profile_hits > 0,
+    ])
+    if evidence_types >= 3:
+        score += 0.08
+    elif evidence_types >= 2:
+        score += 0.04
+
+    # Cap if no career description evidence (only skills/profile)
+    career_evidence = recent_explicit + recent_technical + older_explicit + older_technical
+    if career_evidence == 0:
+        score = min(score, 0.30)
 
     return min(1.0, score)
 
@@ -788,6 +827,102 @@ def consulting_penalty(cand):
 
 
 # ──────────────────────────────────────────────
+# P. SKILL ASSESSMENT SCORE (platform-verified)
+# ──────────────────────────────────────────────
+
+_RELEVANT_ASSESSMENT_KEYWORDS = {
+    "python", "machine learning", "deep learning", "nlp",
+    "natural language", "search", "ranking", "retrieval",
+    "recommendation", "data structures", "algorithms",
+    "statistics", "sql", "pytorch", "tensorflow",
+    "embeddings", "transformers", "ai", "ml",
+}
+
+
+def skill_assessment_score(cand):
+    """
+    Uses Redrob platform assessment scores — verified, not self-reported.
+    Maps relevant assessments to JD requirements and computes a normalized score.
+    This is a much stronger signal than the self-reported skills list.
+    """
+    signals = cand.get("redrob_signals", {})
+    assessments = signals.get("skill_assessment_scores", {})
+
+    if not assessments:
+        return 0.3  # Neutral — absence shouldn't penalize
+
+    relevant_scores = []
+    for skill_name, score_val in assessments.items():
+        name_lower = skill_name.lower()
+        if any(kw in name_lower for kw in _RELEVANT_ASSESSMENT_KEYWORDS):
+            relevant_scores.append(score_val)
+
+    if not relevant_scores:
+        return 0.3  # Has assessments but none are JD-relevant
+
+    avg_score = sum(relevant_scores) / len(relevant_scores)
+
+    # Scoring tiers based on assessment performance
+    if avg_score >= 85:
+        base = 1.0
+    elif avg_score >= 75:
+        base = 0.85
+    elif avg_score >= 65:
+        base = 0.65
+    elif avg_score >= 50:
+        base = 0.45
+    else:
+        base = 0.25
+
+    # Breadth bonus for multiple relevant assessments completed
+    if len(relevant_scores) >= 4:
+        base = min(1.0, base + 0.10)
+    elif len(relevant_scores) >= 2:
+        base = min(1.0, base + 0.05)
+
+    return base
+
+
+# ──────────────────────────────────────────────
+# Q. INTERVIEW RELIABILITY SCORE
+# ──────────────────────────────────────────────
+
+def interview_reliability_score(cand):
+    """
+    Measures candidate's reliability as an active job seeker.
+    Uses interview_completion_rate and applications_submitted_30d.
+    High completion + active applications = genuinely in the market.
+    """
+    signals = cand.get("redrob_signals", {})
+
+    completion = signals.get("interview_completion_rate", 0.5)
+    applications = signals.get("applications_submitted_30d", 0)
+
+    # Interview completion: strong signal of reliability
+    if completion >= 0.9:
+        completion_score = 1.0
+    elif completion >= 0.75:
+        completion_score = 0.8
+    elif completion >= 0.5:
+        completion_score = 0.55
+    else:
+        completion_score = 0.25
+
+    # Active applications: signal of genuine market interest
+    if applications >= 5:
+        activity_score = 1.0
+    elif applications >= 3:
+        activity_score = 0.8
+    elif applications >= 1:
+        activity_score = 0.6
+    else:
+        activity_score = 0.3
+
+    # Weighted: completion matters more than recent applications
+    return completion_score * 0.65 + activity_score * 0.35
+
+
+# ──────────────────────────────────────────────
 # Master function: compute all features at once
 # ──────────────────────────────────────────────
 
@@ -808,6 +943,8 @@ def compute_all_features(cand):
     cand["feat_activity"] = activity_score(cand)
     cand["feat_availability"] = availability_score(cand)
     cand["feat_consistency"] = consistency_score(cand)
+    cand["feat_skill_assessment"] = skill_assessment_score(cand)
+    cand["feat_interview_reliability"] = interview_reliability_score(cand)
 
     # Penalties
     cand["pen_research"] = research_penalty(cand)

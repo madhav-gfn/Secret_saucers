@@ -32,6 +32,8 @@ DIAGNOSTIC_FEATURES = (
     "title_relevance",
     "availability",
     "activity",
+    "skill_assessment",
+    "interview_reliability",
 )
 
 TITLE_EXPLANATION_TERMS = (
@@ -49,6 +51,32 @@ EVIDENCE_LABELS = {
     "faiss": "FAISS",
     "hnsw": "HNSW",
     "ivf": "IVF",
+}
+
+# Known product companies for richer context in reasoning
+_COMPANY_CONTEXT = {
+    "flipkart": "e-commerce marketplace",
+    "swiggy": "food-delivery platform",
+    "zomato": "food-tech platform",
+    "meesho": "social commerce platform",
+    "cred": "fintech platform",
+    "razorpay": "payments infrastructure company",
+    "uber": "ride-hailing and logistics platform",
+    "ola": "mobility platform",
+    "paytm": "digital payments platform",
+    "dream11": "fantasy sports platform",
+    "unacademy": "ed-tech platform",
+    "netflix": "streaming platform",
+    "meta": "social media company",
+    "google": "technology company",
+    "amazon": "e-commerce and cloud platform",
+    "microsoft": "technology company",
+    "apple": "technology company",
+    "salesforce": "enterprise SaaS platform",
+    "freshworks": "enterprise SaaS company",
+    "adobe": "creative and digital experience platform",
+    "phonepe": "digital payments platform",
+    "nykaa": "e-commerce beauty platform",
 }
 
 # Technical skill categories for display filtering
@@ -116,11 +144,54 @@ def _format_evidence(items, limit=2):
     return ", ".join(EVIDENCE_LABELS.get(item, item) for item in items[:limit])
 
 
+def _extract_accomplishment(cand):
+    """
+    Extract a unique, concrete accomplishment snippet from career descriptions.
+    Returns a short, specific phrase that can be used as unique evidence.
+    """
+    import re
+    career = cand.get("career_history", [])
+
+    # Patterns that indicate concrete accomplishments
+    accomplishment_patterns = [
+        r'(?:built|designed|developed|shipped|deployed|launched|architected|created)\s+(?:a\s+)?([^.;]{15,80})',
+        r'(?:improved|increased|reduced|optimized)\s+([^.;]{10,60})\s+by\s+[\d]+',
+        r'(?:serving|handling|processing)\s+([\d]+[\w\s]*(?:users|requests|queries|candidates|items))',
+        r'(?:led|managed|owned)\s+(?:a\s+)?(?:team\s+of\s+)?([^.;]{10,50})',
+    ]
+
+    for job in career[:3]:  # Check recent jobs only
+        desc = job.get("description", "")
+        if not desc:
+            continue
+        for pattern in accomplishment_patterns:
+            match = re.search(pattern, desc, re.IGNORECASE)
+            if match:
+                snippet = match.group(0).strip()
+                # Clean up and cap length
+                if len(snippet) > 90:
+                    snippet = snippet[:87] + "..."
+                return snippet
+
+    return None
+
+
+def _get_company_context(company_name):
+    """Return a contextual description for known product companies."""
+    if not company_name:
+        return ""
+    lower = company_name.lower()
+    for key, desc in _COMPANY_CONTEXT.items():
+        if key in lower:
+            return f", a {desc}"
+    return ""
+
+
 def generate_reasoning(cand, rank):
     """
     Generates a recruiter-style, evidence-backed explanation referencing specific
     profile facts, JD connection, strengths, and tradeoffs.
-    
+
     Design goal: pass the Stage 4 manual review checks:
       - Specific facts from the candidate's profile (company, title, years)
       - Connection to specific JD requirements (retrieval, ranking, search)
@@ -131,7 +202,7 @@ def generate_reasoning(cand, rank):
     """
     sc = cand.get("scorecard", {})
     ev = sc.get("evidence", {})
-    
+
     rel_years = ev.get("relevant_years", 0.0)
     notice = ev.get("notice_days", 0)
     github = ev.get("github_score", 0.0)
@@ -145,26 +216,31 @@ def generate_reasoning(cand, rank):
     stability = sc.get("career_stability", 0.0)
     activity = sc.get("activity", 0.0)
     availability = sc.get("availability", 0.0)
+    skill_assess = sc.get("skill_assessment", 0.0)
     activations = explanation_activations(cand)
     concrete_evidence = feature_evidence(cand)
-    
+
     # Penalties
     pen_research = sc.get("research_penalty", 0.0)
     pen_spec = sc.get("specialization_penalty", 0.0)
     pen_consulting = sc.get("consulting_penalty", 0.0)
-    
+
     raw_matched = ev.get("matched_skills", [])
     display_skills = _prioritized_skills(raw_matched)
+
+    # Extract a unique accomplishment snippet for this candidate
+    accomplishment = _extract_accomplishment(cand)
 
     # Track all evidence terms already used to avoid repetition
     used_evidence = set()
 
     strengths = []
 
-    # ── 1. Title + Company context (the most differentiating fact) ──
+    # ── 1. Title + Company context (varied structure) ──
+    company_ctx = _get_company_context(current_company)
     if current_title and title_relevance >= 0.80:
         title_lower = current_title.lower()
-        company_clause = f" at {current_company}" if current_company else ""
+        company_clause = f" at {current_company}{company_ctx}" if current_company else ""
         if any(term in title_lower for term in ("search", "ranking", "relevance", "recommendation")):
             strengths.append(
                 f"Currently a {current_title}{company_clause}, directly aligned with the JD's core need for retrieval and ranking expertise"
@@ -176,7 +252,7 @@ def generate_reasoning(cand, rank):
         else:
             strengths.append(f"Currently a {current_title}{company_clause}")
     elif current_title and current_company:
-        strengths.append(f"Currently a {current_title} at {current_company}")
+        strengths.append(f"Currently a {current_title} at {current_company}{company_ctx}")
 
     # ── 2. Experience alignment with specific JD range ──
     if 5.0 <= rel_years <= 9.0:
@@ -201,14 +277,18 @@ def generate_reasoning(cand, rank):
         curr_title = curr.get("title", "")
         # Only mention if it shows meaningful progression
         if prev_title and prev_company and prev_title.lower() != curr_title.lower():
+            prev_ctx = _get_company_context(prev_company)
             strengths.append(
-                f"Career progression from {prev_title} at {prev_company} to current role shows growth trajectory"
+                f"Career progression from {prev_title} at {prev_company}{prev_ctx} to current role shows growth trajectory"
             )
 
-    # ── 4. Retrieval/Search evidence (highest-value JD signal) ──
+    # ── 4. Concrete accomplishment (unique per candidate) ──
+    if accomplishment:
+        strengths.append(f"Career evidence: {accomplishment}")
+
+    # ── 5. Retrieval/Search evidence (highest-value JD signal) ──
     if activations["retrieval_relevance"]:
         terms = concrete_evidence.get("retrieval_relevance", [])
-        # Format evidence terms more naturally
         formatted = [EVIDENCE_LABELS.get(t, t) for t in terms[:3]]
         used_evidence.update(terms[:3])
         if formatted:
@@ -221,10 +301,9 @@ def generate_reasoning(cand, rank):
                 "Strong evidence of production retrieval, search, or ranking work aligning with the JD's core focus"
             )
 
-    # ── 5. Product execution (JD: "shipper over researcher") ──
+    # ── 6. Product execution (JD: "shipper over researcher") ──
     if activations["product_execution"]:
         terms = concrete_evidence.get("product_execution", [])
-        # Only show terms not already used in retrieval evidence
         new_terms = [t for t in terms[:3] if t not in used_evidence]
         used_evidence.update(terms[:3])
         formatted = [EVIDENCE_LABELS.get(t, t) for t in new_terms[:2]]
@@ -235,7 +314,7 @@ def generate_reasoning(cand, rank):
         else:
             strengths.append("Demonstrated ability to ship ML systems to production")
 
-    # ── 6. Evaluation systems (rare and highly valued) ──
+    # ── 7. Evaluation systems (rare and highly valued) ──
     if activations["evaluation_systems"]:
         terms = concrete_evidence.get("evaluation_systems", [])
         new_terms = [t for t in terms[:3] if t not in used_evidence]
@@ -248,7 +327,7 @@ def generate_reasoning(cand, rank):
         else:
             strengths.append("Hands-on experience with search/ranking evaluation frameworks")
 
-    # ── 7. Vector search infrastructure ──
+    # ── 8. Vector search infrastructure ──
     if activations["vector_search"]:
         terms = concrete_evidence.get("vector_search", [])
         new_terms = [t for t in terms[:3] if t not in used_evidence]
@@ -261,11 +340,21 @@ def generate_reasoning(cand, rank):
         else:
             strengths.append("Practical vector-search and embedding infrastructure experience")
 
-    # ── 8. Matched skills (concrete, verifiable) ──
+    # ── 9. Skill assessment evidence (platform-verified) ──
+    if skill_assess >= 0.80:
+        strengths.append(
+            "Strong scores on Redrob platform skill assessments in JD-relevant areas"
+        )
+    elif skill_assess >= 0.60:
+        strengths.append(
+            "Solid performance on Redrob platform skill assessments"
+        )
+
+    # ── 10. Matched skills (concrete, verifiable) ──
     if display_skills:
         strengths.append(f"JD-aligned skills: {', '.join(display_skills)}")
 
-    # ── 9. Availability and location signals ──
+    # ── 11. Availability and location signals ──
     avail_parts = []
     if is_open:
         avail_parts.append("actively open to work")
@@ -303,6 +392,18 @@ def generate_reasoning(cand, rank):
         )
     if activity < 0.3:
         tradeoffs.append("Limited recent platform activity, raising availability concerns")
+
+    # Location-specific tradeoffs
+    if location and country:
+        loc_lower = location.lower()
+        country_lower = country.lower()
+        preferred_cities = {"pune", "noida", "hyderabad", "mumbai", "delhi", "ncr",
+                           "bangalore", "bengaluru", "gurgaon", "gurugram", "chennai"}
+        if "india" not in country_lower:
+            tradeoffs.append(f"Based in {location} ({country}) — outside India, may require relocation")
+        elif not any(city in loc_lower for city in preferred_cities):
+            tradeoffs.append(f"Based in {location} — not in the JD's preferred Pune/Noida/Hyderabad locations")
+
     if github < 2.0:
         tradeoffs.append("Minimal open-source/GitHub activity")
     if not is_open and availability < 0.5:
@@ -312,7 +413,7 @@ def generate_reasoning(cand, rank):
     strength_text = "; ".join(strengths) if strengths else "Relevant technical background"
     tradeoff_text = "; ".join(tradeoffs) if tradeoffs else "no major evidence-backed concerns"
 
-    # Rank-aware framing
+    # Rank-aware framing with varied openers
     if rank <= 10:
         return f"Strong match. {strength_text}. Tradeoff: {tradeoff_text}."
     elif rank <= 30:
@@ -375,6 +476,8 @@ def generate_debug_csv(candidates, output_path):
             "activity": f"{sc.get('activity', 0.0):.4f}",
             "availability": f"{sc.get('availability', 0.0):.4f}",
             "consistency": f"{sc.get('consistency', 0.0):.4f}",
+            "skill_assessment": f"{sc.get('skill_assessment', 0.0):.4f}",
+            "interview_reliability": f"{sc.get('interview_reliability', 0.0):.4f}",
             # Penalties
             "pen_research": f"{sc.get('research_penalty', 0.0):.4f}",
             "pen_specialization": f"{sc.get('specialization_penalty', 0.0):.4f}",
