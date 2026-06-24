@@ -101,18 +101,34 @@ def build_scorecard(cand):
         "specialization_penalty": pen_spec,
         "consulting_penalty": pen_consulting,
         "penalty_total": penalty_total,
-        # Evidence for explanations
-        "evidence": {
-            "years_exp": profile.get("years_of_experience", 0),
-            "relevant_years": cand.get("relevant_years", 0.0),
-            "notice_days": signals.get("notice_period_days", 0),
-            "github_score": signals.get("github_activity_score", 0.0),
-            "recruiter_views": signals.get("profile_views_received_30d", 0),
-            "open_to_work": signals.get("open_to_work_flag", False),
-            "matched_skills": cand.get("matched_skills", []),
-            "current_title": profile.get("current_title", ""),
-            "location": profile.get("location", ""),
-        }
+    }
+
+    # ── Gather richer evidence for explanation generation ──
+    career_history = cand.get("career_history", [])
+    current_company = career_history[0].get("company", "") if career_history else ""
+    career_trajectory = []
+    for job in career_history[:3]:
+        career_trajectory.append({
+            "company": job.get("company", ""),
+            "title": job.get("title", ""),
+            "months": job.get("duration_months", 0),
+        })
+
+    scorecard["evidence"] = {
+        "years_exp": profile.get("years_of_experience", 0),
+        "relevant_years": cand.get("relevant_years", 0.0),
+        "calculated_years": cand.get("calculated_years", 0.0),
+        "notice_days": signals.get("notice_period_days", 0),
+        "github_score": signals.get("github_activity_score", 0.0),
+        "recruiter_views": signals.get("profile_views_received_30d", 0),
+        "open_to_work": signals.get("open_to_work_flag", False),
+        "matched_skills": cand.get("matched_skills", []),
+        "current_title": profile.get("current_title", ""),
+        "current_company": current_company,
+        "location": profile.get("location", ""),
+        "country": profile.get("country", ""),
+        "career_trajectory": career_trajectory,
+        "willing_to_relocate": signals.get("willing_to_relocate", False),
     }
     
     cand["scorecard"] = scorecard
