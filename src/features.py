@@ -122,10 +122,13 @@ def retrieval_relevance_score(cand):
     profile = cand.get("profile", {})
 
     # Separate recent career (first 2 jobs) from older career
+    # Include accomplishments for richer evidence
     recent_parts = []
     older_parts = []
     for i, job in enumerate(career_history):
         text = (job.get("title", "") + " " + job.get("description", "")).lower()
+        for acc in job.get("accomplishments", []):
+            text += " " + str(acc).lower()
         if i < 2:
             recent_parts.append(text)
         else:
@@ -234,7 +237,12 @@ def product_execution_score(cand):
     """
     career = _career_text(cand)
     summary = cand.get("profile", {}).get("summary", "").lower()
-    combined = career + " " + summary
+    # Include accomplishments for richer evidence
+    accomplishments = []
+    for job in cand.get("career_history", []):
+        for acc in job.get("accomplishments", []):
+            accomplishments.append(str(acc).lower())
+    combined = career + " " + summary + " " + " ".join(accomplishments)
 
     hits = _count_keyword_hits(combined, _EXECUTION_KEYWORDS)
 
@@ -315,7 +323,12 @@ def vector_search_score(cand):
     """Rewards hands-on experience with vector databases and search infrastructure."""
     career = _career_text(cand)
     summary = cand.get("profile", {}).get("summary", "").lower()
-    evidence_text = career + " " + summary
+    # Include accomplishments for richer evidence
+    accomplishments = []
+    for job in cand.get("career_history", []):
+        for acc in job.get("accomplishments", []):
+            accomplishments.append(str(acc).lower())
+    evidence_text = career + " " + summary + " " + " ".join(accomplishments)
     skills_text = " ".join(s.get("name", "") for s in cand.get("skills", [])).lower()
 
     evidence_products = _count_keyword_hits(evidence_text, _VECTOR_PRODUCTS)
@@ -617,6 +630,7 @@ def consistency_score(cand):
     """
     Trust score: detects honeypot and inflated profiles.
     Returns 1.0 for clean profiles, lower for suspicious ones.
+    Strengthened with skill-duration cross-checks and endorsement ratio analysis.
     """
     penalties = 0.0
 
@@ -659,6 +673,36 @@ def consistency_score(cand):
     # 5. Very high skill count with generic names
     if len(skills) >= 20:
         penalties += 0.10
+
+    # 6. Skill duration exceeds total career duration (honeypot signal)
+    #    e.g., claims 120 months of PyTorch but total career is 36 months
+    if total_months > 0:
+        impossible_skills = 0
+        for s in skills:
+            skill_dur = s.get("duration_months", 0)
+            if skill_dur > total_months + 12:  # Allow 12-month overlap margin
+                impossible_skills += 1
+        if impossible_skills >= 3:
+            penalties += 0.30
+        elif impossible_skills >= 1:
+            penalties += 0.12
+
+    # 7. Expert count vs total endorsements ratio
+    #    Many expert skills but zero endorsements overall is very suspicious
+    signals = cand.get("redrob_signals", {})
+    total_endorsements = signals.get("endorsements_received", 0)
+    if expert_count >= 5 and total_endorsements == 0:
+        penalties += 0.20
+    elif expert_count >= 3 and total_endorsements == 0:
+        penalties += 0.08
+
+    # 8. Impossible tenure at specific companies
+    #    Catch honeypots with e.g. "8 years at a 3-year-old company"
+    for job in career:
+        dur = job.get("duration_months", 0)
+        if dur > 180:  # >15 years at single company is suspicious in tech
+            penalties += 0.15
+            break
 
     return max(0.0, 1.0 - penalties)
 
@@ -923,6 +967,102 @@ def interview_reliability_score(cand):
 
 
 # ──────────────────────────────────────────────
+# R. EDUCATION QUALITY SCORE
+# ──────────────────────────────────────────────
+
+_RELEVANT_FIELDS = {
+    "computer science", "computer engineering", "software engineering",
+    "information technology", "artificial intelligence", "machine learning",
+    "data science", "mathematics", "statistics", "applied mathematics",
+    "electrical engineering", "electronics", "information systems",
+    "computational", "informatics",
+}
+
+_ADVANCED_DEGREES = {"master", "m.tech", "ms", "m.s.", "mtech", "phd", "ph.d", "doctorate"}
+
+
+def education_quality_score(cand):
+    """
+    Scores education quality using institution tier, degree relevance, and level.
+    The candidate schema includes a 'tier' field (tier_1 through tier_4) on each
+    education entry — this is free structured data the pipeline previously ignored.
+    """
+    education = cand.get("education", [])
+    if not education:
+        return 0.3  # Neutral — absence shouldn't heavily penalize
+
+    best_score = 0.3
+
+    for edu in education:
+        score = 0.3  # baseline
+
+        # Institution tier scoring
+        tier = edu.get("tier", "unknown")
+        tier_bonus = {
+            "tier_1": 0.35,
+            "tier_2": 0.20,
+            "tier_3": 0.10,
+            "tier_4": 0.0,
+        }.get(tier, 0.0)
+        score += tier_bonus
+
+        # Field relevance
+        field = edu.get("field_of_study", "").lower()
+        if any(f in field for f in _RELEVANT_FIELDS):
+            score += 0.20
+
+        # Advanced degree bonus
+        degree = edu.get("degree", "").lower()
+        if any(d in degree for d in _ADVANCED_DEGREES):
+            score += 0.15
+
+        best_score = max(best_score, score)
+
+    return min(1.0, best_score)
+
+
+# ──────────────────────────────────────────────
+# S. PROFILE TRUST & GITHUB SCORE
+# ──────────────────────────────────────────────
+
+def profile_trust_score(cand):
+    """
+    Combines platform trust signals and GitHub/open-source activity.
+    JD Line 39: "Open-source contributions" is desirable.
+    JD Line 46: "without external validation" is a disqualifier.
+    Uses profile_completeness, verified flags, linkedin, and github_activity_score.
+    """
+    signals = cand.get("redrob_signals", {})
+
+    # GitHub activity (0-100, -1 if no GitHub linked)
+    github = signals.get("github_activity_score", -1)
+    if github < 0:
+        github_norm = 0.2  # No GitHub is mildly negative, not disqualifying
+    else:
+        github_norm = min(1.0, github / 70.0)  # 70+ is strong
+
+    # Profile completeness
+    completeness = signals.get("profile_completeness_score", 50) / 100.0
+
+    # Verification signals (binary)
+    verified_email = 1.0 if signals.get("verified_email", False) else 0.0
+    verified_phone = 1.0 if signals.get("verified_phone", False) else 0.0
+    linkedin = 1.0 if signals.get("linkedin_connected", False) else 0.0
+
+    # Weighted combination
+    score = (
+        github_norm * 0.35
+        + completeness * 0.25
+        + linkedin * 0.15
+        + verified_email * 0.10
+        + verified_phone * 0.10
+        + 0.05  # baseline offset so nobody gets zero
+    )
+
+    return max(0.0, min(1.0, score))
+
+
+# ──────────────────────────────────────────────
 # Master function: compute all features at once
 # ──────────────────────────────────────────────
 
@@ -945,6 +1085,8 @@ def compute_all_features(cand):
     cand["feat_consistency"] = consistency_score(cand)
     cand["feat_skill_assessment"] = skill_assessment_score(cand)
     cand["feat_interview_reliability"] = interview_reliability_score(cand)
+    cand["feat_education_quality"] = education_quality_score(cand)
+    cand["feat_profile_trust"] = profile_trust_score(cand)
 
     # Penalties
     cand["pen_research"] = research_penalty(cand)

@@ -51,21 +51,23 @@ JD_PATH = DATA_DIR / "job_description.txt"
 #   - No single feature exceeds 18%.
 
 FEATURE_WEIGHTS = {
-    "semantic":              0.14,   # Reduced from 0.16 — TF-IDF pre-filter handles broad relevance
-    "retrieval_relevance":   0.15,
-    "product_execution":     0.12,
-    "evaluation_systems":    0.10,
+    "semantic":              0.15,   # MiniLM-L6 with ONNX O4 optimization
+    "retrieval_relevance":   0.15,   # Top engineered feature — retrieval/ranking/search
+    "product_execution":     0.11,   # Slight reduction
+    "evaluation_systems":    0.09,   # Slight reduction
     "product_company":       0.05,
     "title_relevance":       0.06,
-    "experience_alignment":  0.07,
-    "career_stability":      0.07,   # Reduced from 0.08
-    "activity":              0.05,   # Reduced from 0.06
+    "experience_alignment":  0.06,   # Reduced from 0.07
+    "career_stability":      0.06,   # Reduced from 0.07
+    "activity":              0.05,
     "availability":          0.05,
     "vector_search":         0.04,
     "nlp_llm":               0.03,
     "consistency":           0.03,
-    "skill_assessment":      0.02,   # NEW: platform-verified assessment scores
-    "interview_reliability": 0.02,   # NEW: interview completion + application activity
+    "skill_assessment":      0.02,
+    "interview_reliability": 0.02,
+    "education_quality":     0.02,   # NEW: institution tier + degree relevance
+    "profile_trust":         0.01,   # NEW: GitHub + profile completeness + verification
 }
 
 # Penalty deduction caps (applied as score -= penalty_value * cap)

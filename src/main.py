@@ -36,7 +36,7 @@ def run_pipeline(use_sample=False):
     
     # 1.5. STAGE 1.5: TF-IDF Pre-filter (reduce pool for fast embedding)
     print("\n--- STAGE 1.5: TF-IDF Pre-filter ---")
-    s1b_candidates = tfidf_prefilter(s1_candidates, JD_PATH, top_k=3000)
+    s1b_candidates = tfidf_prefilter(s1_candidates, JD_PATH, top_k=5000)
     print(f"Stage 1.5 Filtering: Retained {len(s1b_candidates)} candidates.")
     
     # 2. STAGE 2: Semantic + Feature Extraction

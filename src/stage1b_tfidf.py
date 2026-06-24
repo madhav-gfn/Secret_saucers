@@ -119,7 +119,7 @@ def tfidf_prefilter(candidates, jd_path, top_k=3000):
             result.append(candidates[idx])
 
     force_count = len(force_include_indices - set(ranked_indices[:top_k]))
-    print(f"  TF-IDF: {len(candidates)} → {len(result)} candidates "
+    print(f"  TF-IDF: {len(candidates)} -> {len(result)} candidates "
           f"(top_k={top_k}, force-included {len(force_include_indices)} by title)")
 
     return result

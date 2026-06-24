@@ -15,7 +15,12 @@ STOPWORDS = {"the", "and", "for", "are", "but", "not", "you", "all", "can", "her
 
 class EnsembleMatcher:
     def __init__(self):
-        self.model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2", backend="onnx",device="cpu")
+        self.model = SentenceTransformer(
+            "sentence-transformers/all-MiniLM-L6-v2",
+            backend="onnx",
+            model_kwargs={"file_name": "onnx/model_O4.onnx"},
+            device="cpu",
+        )
         self.jd_vector = None
         self.jd_text = ""
         self.jd_words = set()  # Word-boundary tokenized set for exact matching
@@ -101,9 +106,14 @@ class EnsembleMatcher:
             profile = c.get("profile", {})
             skill_names = [s.get("name", "") for s in c.get("skills", [])]
             
-            # Deep Context: Extract top 2 career history descriptions
-            career_history = c.get("career_history", [])[:2]
-            career_text = " ".join([job.get("description", "") for job in career_history])
+            # Deep Context: Use ALL career descriptions + accomplishments
+            career_parts = []
+            for job in c.get("career_history", []):
+                career_parts.append(job.get("title", ""))
+                career_parts.append(job.get("description", ""))
+                for acc in job.get("accomplishments", []):
+                    career_parts.append(str(acc))
+            career_text = " ".join(career_parts)
             
             texts.append(
                 f"{profile.get('current_title', '')} {profile.get('headline', '')} "
@@ -111,7 +121,7 @@ class EnsembleMatcher:
             )
             
         print(f"  Encoding {len(texts)} candidates...")
-        cand_vectors = self.model.encode(texts, normalize_embeddings=True, batch_size=256, show_progress_bar=False)
+        cand_vectors = self.model.encode(texts, normalize_embeddings=True, batch_size=128, show_progress_bar=False)
         
         # Inner product of normalized vectors = Cosine Similarity
         index = faiss.IndexFlatIP(cand_vectors.shape[1])

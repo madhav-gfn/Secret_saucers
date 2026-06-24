@@ -34,6 +34,8 @@ DIAGNOSTIC_FEATURES = (
     "activity",
     "skill_assessment",
     "interview_reliability",
+    "education_quality",
+    "profile_trust",
 )
 
 TITLE_EXPLANATION_TERMS = (
@@ -478,6 +480,8 @@ def generate_debug_csv(candidates, output_path):
             "consistency": f"{sc.get('consistency', 0.0):.4f}",
             "skill_assessment": f"{sc.get('skill_assessment', 0.0):.4f}",
             "interview_reliability": f"{sc.get('interview_reliability', 0.0):.4f}",
+            "education_quality": f"{sc.get('education_quality', 0.0):.4f}",
+            "profile_trust": f"{sc.get('profile_trust', 0.0):.4f}",
             # Penalties
             "pen_research": f"{sc.get('research_penalty', 0.0):.4f}",
             "pen_specialization": f"{sc.get('specialization_penalty', 0.0):.4f}",
