@@ -1,3 +1,4 @@
+# pyrefly: ignore [missing-import]
 import faiss
 import re
 import numpy as np
@@ -14,7 +15,7 @@ STOPWORDS = {"the", "and", "for", "are", "but", "not", "you", "all", "can", "her
 
 class EnsembleMatcher:
     def __init__(self):
-        self.model = SentenceTransformer("all-MiniLM-L6-v2", device="cpu")
+        self.model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2", backend="onnx",device="cpu")
         self.jd_vector = None
         self.jd_text = ""
         self.jd_words = set()  # Word-boundary tokenized set for exact matching

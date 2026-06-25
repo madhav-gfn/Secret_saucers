@@ -122,10 +122,10 @@ def generate_reasoning(cand, rank):
     profile facts, JD connection, strengths, and tradeoffs.
     
     Design goal: pass the Stage 4 manual review checks:
-      - Specific facts from the candidate's profile
-      - Connection to specific JD requirements
+      - Specific facts from the candidate's profile (company, title, years)
+      - Connection to specific JD requirements (retrieval, ranking, search)
       - Honest concerns where gaps exist
-      - No hallucination
+      - No hallucination — every claim is backed by extracted data
       - Substantive variation between candidates
       - Tone matches the rank
     """
@@ -137,6 +137,10 @@ def generate_reasoning(cand, rank):
     github = ev.get("github_score", 0.0)
     is_open = ev.get("open_to_work", False)
     current_title = ev.get("current_title", "")
+    current_company = ev.get("current_company", "")
+    location = ev.get("location", "")
+    country = ev.get("country", "")
+    career_trajectory = ev.get("career_trajectory", [])
     title_relevance = sc.get("title_relevance", 0.0)
     stability = sc.get("career_stability", 0.0)
     activity = sc.get("activity", 0.0)
@@ -152,77 +156,171 @@ def generate_reasoning(cand, rank):
     raw_matched = ev.get("matched_skills", [])
     display_skills = _prioritized_skills(raw_matched)
 
+    # Track all evidence terms already used to avoid repetition
+    used_evidence = set()
+
     strengths = []
 
-    if (
-        current_title
-        and title_relevance >= 0.80
-        and any(term in current_title.lower() for term in TITLE_EXPLANATION_TERMS)
-    ):
+    # ── 1. Title + Company context (the most differentiating fact) ──
+    if current_title and title_relevance >= 0.80:
         title_lower = current_title.lower()
+        company_clause = f" at {current_company}" if current_company else ""
         if any(term in title_lower for term in ("search", "ranking", "relevance", "recommendation")):
-            strengths.append(f"Current {current_title} role directly aligns with the JD's search focus")
+            strengths.append(
+                f"Currently a {current_title}{company_clause}, directly aligned with the JD's core need for retrieval and ranking expertise"
+            )
+        elif any(term in title_lower for term in TITLE_EXPLANATION_TERMS):
+            strengths.append(
+                f"Currently a {current_title}{company_clause}, with a role profile matching the JD's Senior AI Engineer requirements"
+            )
         else:
-            strengths.append(f"Current {current_title} role aligns closely with the JD")
+            strengths.append(f"Currently a {current_title}{company_clause}")
+    elif current_title and current_company:
+        strengths.append(f"Currently a {current_title} at {current_company}")
 
+    # ── 2. Experience alignment with specific JD range ──
     if 5.0 <= rel_years <= 9.0:
-        strengths.append(f"{rel_years:.1f} years of relevant experience falls within the target range")
+        strengths.append(
+            f"{rel_years:.1f} years of relevant technical experience, within the JD's target 5-9 year range"
+        )
+    elif 4.0 <= rel_years < 5.0:
+        strengths.append(
+            f"{rel_years:.1f} years of relevant experience, slightly below the JD's 5-year target but approaching range"
+        )
+    elif 9.0 < rel_years <= 12.0:
+        strengths.append(
+            f"{rel_years:.1f} years of relevant experience, bringing senior-level depth beyond the JD's 5-9 year range"
+        )
 
-    if is_open:
-        strengths.append("Currently open to work")
+    # ── 3. Career trajectory (shows progression, not just current role) ──
+    if len(career_trajectory) >= 2:
+        prev = career_trajectory[1]
+        curr = career_trajectory[0]
+        prev_title = prev.get("title", "")
+        prev_company = prev.get("company", "")
+        curr_title = curr.get("title", "")
+        # Only mention if it shows meaningful progression
+        if prev_title and prev_company and prev_title.lower() != curr_title.lower():
+            strengths.append(
+                f"Career progression from {prev_title} at {prev_company} to current role shows growth trajectory"
+            )
 
+    # ── 4. Retrieval/Search evidence (highest-value JD signal) ──
     if activations["retrieval_relevance"]:
-        terms = _format_evidence(concrete_evidence["retrieval_relevance"])
-        strengths.append(
-            f"Production retrieval evidence includes {terms}"
-            if terms else "Strong evidence of production retrieval, search, or ranking work"
-        )
+        terms = concrete_evidence.get("retrieval_relevance", [])
+        # Format evidence terms more naturally
+        formatted = [EVIDENCE_LABELS.get(t, t) for t in terms[:3]]
+        used_evidence.update(terms[:3])
+        if formatted:
+            strengths.append(
+                f"Demonstrates production retrieval/search work — profile references {', '.join(formatted)}, "
+                f"matching the JD's emphasis on building ranking and search systems"
+            )
+        else:
+            strengths.append(
+                "Strong evidence of production retrieval, search, or ranking work aligning with the JD's core focus"
+            )
 
+    # ── 5. Product execution (JD: "shipper over researcher") ──
     if activations["product_execution"]:
-        terms = _format_evidence(concrete_evidence["product_execution"])
-        strengths.append(
-            f"Production delivery evidence includes {terms}"
-            if terms else "Strong track record of shipping ML systems to production"
-        )
+        terms = concrete_evidence.get("product_execution", [])
+        # Only show terms not already used in retrieval evidence
+        new_terms = [t for t in terms[:3] if t not in used_evidence]
+        used_evidence.update(terms[:3])
+        formatted = [EVIDENCE_LABELS.get(t, t) for t in new_terms[:2]]
+        if formatted:
+            strengths.append(
+                f"Track record of shipping to production — evidence includes {', '.join(formatted)}"
+            )
+        else:
+            strengths.append("Demonstrated ability to ship ML systems to production")
 
+    # ── 6. Evaluation systems (rare and highly valued) ──
     if activations["evaluation_systems"]:
-        terms = _format_evidence(concrete_evidence["evaluation_systems"])
-        strengths.append(
-            f"Evaluation evidence includes {terms}"
-            if terms else "Concrete experience with ranking or search evaluation"
-        )
+        terms = concrete_evidence.get("evaluation_systems", [])
+        new_terms = [t for t in terms[:3] if t not in used_evidence]
+        used_evidence.update(terms[:3])
+        formatted = [EVIDENCE_LABELS.get(t, t) for t in new_terms[:2]]
+        if formatted:
+            strengths.append(
+                f"Experience with evaluation frameworks ({', '.join(formatted)}), a differentiator the JD specifically values"
+            )
+        else:
+            strengths.append("Hands-on experience with search/ranking evaluation frameworks")
 
+    # ── 7. Vector search infrastructure ──
     if activations["vector_search"]:
-        terms = _format_evidence(concrete_evidence["vector_search"])
-        strengths.append(
-            f"Vector-search evidence includes {terms}"
-            if terms else "Hands-on vector-search infrastructure experience"
-        )
+        terms = concrete_evidence.get("vector_search", [])
+        new_terms = [t for t in terms[:3] if t not in used_evidence]
+        used_evidence.update(terms[:3])
+        formatted = [EVIDENCE_LABELS.get(t, t) for t in new_terms[:2]]
+        if formatted:
+            strengths.append(
+                f"Hands-on vector-search infrastructure experience ({', '.join(formatted)})"
+            )
+        else:
+            strengths.append("Practical vector-search and embedding infrastructure experience")
 
+    # ── 8. Matched skills (concrete, verifiable) ──
     if display_skills:
-        strengths.append(f"JD-relevant skills include {', '.join(display_skills)}")
+        strengths.append(f"JD-aligned skills: {', '.join(display_skills)}")
 
+    # ── 9. Availability and location signals ──
+    avail_parts = []
+    if is_open:
+        avail_parts.append("actively open to work")
+    if notice <= 30 and notice > 0:
+        avail_parts.append(f"available within {notice} days")
+    if avail_parts:
+        strengths.append(f"Availability: {', '.join(avail_parts)}")
+
+    # ── Tradeoffs (honest, evidence-backed concerns) ──
     tradeoffs = []
-    if notice >= 45:
-        tradeoffs.append(f"{notice}-day notice period")
+    if notice >= 60:
+        tradeoffs.append(
+            f"{notice}-day notice period exceeds the JD's preference for sub-30-day availability"
+        )
+    elif notice >= 45:
+        tradeoffs.append(f"{notice}-day notice period is above the JD's preferred range")
+
     if pen_research >= 0.30:
-        tradeoffs.append("Research-heavy background with limited production evidence")
+        tradeoffs.append(
+            "Career leans research-heavy with limited production deployment evidence"
+        )
     if pen_consulting >= 0.25:
-        tradeoffs.append("Predominantly consulting-company career history")
+        tradeoffs.append(
+            "Career history is predominantly consulting firms, which the JD flags as a concern"
+        )
     if pen_spec >= 0.35:
-        tradeoffs.append("Primary expertise in CV/Speech/Robotics rather than NLP/IR")
-    if activity < 0.3:
-        tradeoffs.append("Limited recent platform activity")
+        tradeoffs.append(
+            "Primary expertise appears to be in CV/Speech/Robotics rather than NLP/IR, "
+            "which the JD warns may require re-learning fundamentals"
+        )
     if stability < 0.3:
-        tradeoffs.append("Frequent job changes")
+        tradeoffs.append(
+            "Frequent job changes (avg tenure < 18 months) — the JD notes concern about candidates "
+            "switching every 1.5 years"
+        )
+    if activity < 0.3:
+        tradeoffs.append("Limited recent platform activity, raising availability concerns")
     if github < 2.0:
-        tradeoffs.append("Limited open-source activity")
+        tradeoffs.append("Minimal open-source/GitHub activity")
     if not is_open and availability < 0.5:
         tradeoffs.append("Not currently marked open to work")
 
+    # ── Assemble with rank-aware tone ──
     strength_text = "; ".join(strengths) if strengths else "Relevant technical background"
     tradeoff_text = "; ".join(tradeoffs) if tradeoffs else "no major evidence-backed concerns"
-    return f"Strength: {strength_text}. Tradeoff: {tradeoff_text}."
+
+    # Rank-aware framing
+    if rank <= 10:
+        return f"Strong match. {strength_text}. Tradeoff: {tradeoff_text}."
+    elif rank <= 30:
+        return f"Good match. {strength_text}. Tradeoff: {tradeoff_text}."
+    elif rank <= 60:
+        return f"Moderate match. {strength_text}. Tradeoff: {tradeoff_text}."
+    else:
+        return f"Borderline match. {strength_text}. Tradeoff: {tradeoff_text}."
 
 
 def generate_submission_csv(candidates, output_path):
