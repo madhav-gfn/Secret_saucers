@@ -1,2 +1,3 @@
 candidate_id,rank,score,reasoning
-CAND_0000001,1,0.5115,"Potential match (Overall: 51.1%). Favorable hiring readiness indicators (53.4%). Evidence: 6.8 yrs relevant experience (in JD sweet spot), active GitHub contributor (score: 9.2)."
+CAND_0000031,1,0.6349,"Strength: Strong retrieval and recommendation-system experience. Excellent product-company background. Hands-on vector-search infrastructure experience. Demonstrated skills in FAISS, Pinecone, Machine Learning. Tradeoff: 60-day notice period."
+CAND_0000001,2,0.4235,"Strength: Strong track record of shipping ML systems to production. Demonstrated skills in NLP, Fine-tuning LLMs, LoRA. Stable career progression. Tradeoff: 60-day notice period."
